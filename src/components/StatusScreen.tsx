@@ -192,7 +192,7 @@ const StatusScreen = ({
           </Box>
           
           <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-            {" " + (manualOverride ? "BORTA" : (isOpen ? "ÖPPET" : "STÄNGT"))}
+           
           </Typography>
         </Box>
 
@@ -223,7 +223,7 @@ const StatusScreen = ({
                   component="img" 
                   src={currentSymbol.image_url} 
                   alt={manualOverride ? "Away Symbol" : (isOpen ? "Open Symbol" : "Closed Symbol")} 
-                  sx={{ height: 80, maxWidth: 80 }} 
+                  sx={{ height: 160, maxWidth: 160 }} 
                 />
               ) : (
                 <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
@@ -234,7 +234,7 @@ const StatusScreen = ({
             
             <Divider sx={{ width: '100%', my: 1.5 }} />
             
-            <Typography variant="body1" sx={{ textAlign: 'center', mt: 1 }}>
+            <Typography variant="h5" sx={{ textAlign: 'center', mt: 1 }}>
               <Box component="span" sx={{ fontWeight: 'bold' }}>
             
               </Box>{' '}
@@ -246,15 +246,15 @@ const StatusScreen = ({
         {/* Simple time information */}
         <Box sx={{ mb: 2 }}>
           {manualOverride ? (
-            <Typography variant="body1">
+            <Typography variant="h4">
               Vi är snart tillbaka
             </Typography>
           ) : isOpen && currentTimeSlot ? (
-            <Typography variant="h6">
+            <Typography variant="h4">
               Öppet till {currentTimeSlot.end}
             </Typography>
           ) : nextOpening.day && nextOpening.time ? (
-            <Typography variant="h6">
+            <Typography variant="h4">
               Öppnar nästa gång: {nextOpening.day === currentDay ? 'Idag' : nextOpening.day} kl {nextOpening.time}
             </Typography>
           ) : (
