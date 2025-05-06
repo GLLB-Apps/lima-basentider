@@ -338,8 +338,8 @@ const DayCard = ({
                 </Box>
                 {isLoggedIn && (
                   <Box sx={{ display: 'flex' }}>
-                    <IconButton size="small" onClick={() => handleEditTimeSlot(day.id, time)} color="primary"><Edit size={16} /></IconButton>
-                    <IconButton size="small" onClick={() => handleDeleteTimeSlot(day.id, time.id)} color="error"><Trash2 size={16} /></IconButton>
+                    <IconButton size="small" onClick={() => handleEditTimeSlot(day.id, time)} color="primary"><Edit size={24} /></IconButton>
+                    <IconButton size="small" onClick={() => handleDeleteTimeSlot(day.id, time.id)} color="error"><Trash2 size={24} /></IconButton>
                   </Box>
                 )}
               </Box>
