@@ -132,35 +132,54 @@ export const signOut = async (): Promise<boolean> => {
   return true;
 };
 
-// Override status (manual override settings)
+// Override status (manual override settings) - UPDATED
 export const getOverrideStatus = async () => {
   try {
     const doc = await databases.getDocument(APPWRITE_DATABASE_ID, COLLECTION_OVERRIDES, DOCUMENT_OVERRIDE_ID);
+    console.log("Loaded override status from database:", doc);
     return {
-      manualOverride: doc.manualOverride,
-      message: doc.message,
+      manualOverride: doc.manualOverride === true, // Ensure boolean conversion
+      message: doc.message || '',
     };
   } catch (err) {
     console.error('Error fetching override:', err);
-    return { manualOverride: false, message: '' };
+    // Create the document if it doesn't exist
+    try {
+      await prepareOverrideDocument();
+      console.log("Created new override document with default values");
+      return { manualOverride: false, message: '' };
+    } catch (createErr) {
+      console.error('Error creating override document:', createErr);
+      return { manualOverride: false, message: '' };
+    }
   }
 };
 
+// UPDATED for better persistence
 export const updateOverrideStatus = async (manualOverride: boolean, message: string): Promise<boolean> => {
   try {
+    console.log("Saving override to database:", { manualOverride, message });
+    
     await databases.updateDocument(APPWRITE_DATABASE_ID, COLLECTION_OVERRIDES, DOCUMENT_OVERRIDE_ID, {
-      manualOverride,
-      message,
+      manualOverride: manualOverride,
+      message: message,
     });
+    
+    console.log("Successfully saved override status");
     return true;
   } catch (err: any) {
     if (err?.message?.includes('Document not found')) {
       try {
+        console.log("Override document not found, creating new one");
         await prepareOverrideDocument();
+        
+        // Try updating again after creating
         await databases.updateDocument(APPWRITE_DATABASE_ID, COLLECTION_OVERRIDES, DOCUMENT_OVERRIDE_ID, {
-          manualOverride,
-          message,
+          manualOverride: manualOverride,
+          message: message,
         });
+        
+        console.log("Successfully created and updated override document");
         return true;
       } catch (createErr) {
         console.error('Error creating and updating override document:', createErr);
@@ -174,10 +193,14 @@ export const updateOverrideStatus = async (manualOverride: boolean, message: str
 
 export const prepareOverrideDocument = async (): Promise<boolean> => {
   try {
+    console.log("Creating override document with ID:", DOCUMENT_OVERRIDE_ID);
+    
     await databases.createDocument(APPWRITE_DATABASE_ID, COLLECTION_OVERRIDES, DOCUMENT_OVERRIDE_ID, {
       manualOverride: false,
       message: 'Strax tillbaka'
     });
+    
+    console.log("Successfully created override document");
     return true;
   } catch (err) {
     console.error('Error preparing override document:', err);
@@ -236,6 +259,8 @@ const svgToPngBlob = async (svgString: string): Promise<Blob | null> => {
 // Updated to support 'away' type
 export const uploadSymbol = async (type: 'open' | 'closed' | 'away', svgString: string): Promise<string | null> => {
   try {
+    console.log(`Uploading ${type} symbol...`);
+    
     // Convert SVG to PNG using canvas
     const pngBlob = await svgToPngBlob(svgString);
     if (!pngBlob) {
@@ -255,9 +280,9 @@ export const uploadSymbol = async (type: 'open' | 'closed' | 'away', svgString: 
     try {
       await storage.getFile(BUCKET_SYMBOLS, fileId);
       await storage.deleteFile(BUCKET_SYMBOLS, fileId);
-      console.log('Deleted existing file');
+      console.log(`Deleted existing ${type} file`);
     } catch (fileErr) {
-      console.log('File does not exist yet or could not be deleted');
+      console.log(`${type} file does not exist yet or could not be deleted`);
     }
 
     // Upload the file exactly as shown in the Appwrite example
@@ -267,13 +292,14 @@ export const uploadSymbol = async (type: 'open' | 'closed' | 'away', svgString: 
       file
     );
 
-    console.log('File upload result:', result);
+    console.log(`${type} file upload result:`, result);
 
     // Return the URL to the uploaded file
     const fileUrl = `${APPWRITE_ENDPOINT}/storage/buckets/${BUCKET_SYMBOLS}/files/${fileId}/view?project=${APPWRITE_PROJECT_ID}`;
+    console.log(`${type} symbol URL:`, fileUrl);
     return fileUrl;
   } catch (err) {
-    console.error('Error uploading symbol:', err);
+    console.error(`Error uploading ${type} symbol:`, err);
     if (err instanceof Error) {
       console.error('Error details:', err.message);
     }
@@ -283,12 +309,16 @@ export const uploadSymbol = async (type: 'open' | 'closed' | 'away', svgString: 
 
 // Get URL for a symbol - updated to support 'away' type
 export const getSymbolUrl = (type: 'open' | 'closed' | 'away'): string => {
-  return `${APPWRITE_ENDPOINT}/storage/buckets/${BUCKET_SYMBOLS}/files/${type}/view?project=${APPWRITE_PROJECT_ID}`;
+  const url = `${APPWRITE_ENDPOINT}/storage/buckets/${BUCKET_SYMBOLS}/files/${type}/view?project=${APPWRITE_PROJECT_ID}`;
+  console.log(`Getting URL for ${type} symbol:`, url);
+  return url;
 };
 
 // Save a message for a symbol - updated to support 'away' type
 export const saveSymbolMessage = async (type: 'open' | 'closed' | 'away', message: string): Promise<boolean> => {
   try {
+    console.log(`Saving ${type} message:`, message);
+    
     // Try to get existing messages document
     try {
       const existingDoc = await databases.getDocument(
@@ -296,6 +326,8 @@ export const saveSymbolMessage = async (type: 'open' | 'closed' | 'away', messag
         COLLECTION_SYMBOL_MESSAGES,
         DOCUMENT_SYMBOL_MESSAGES_ID
       );
+      
+      console.log("Found existing symbol messages document:", existingDoc);
       
       // Update the existing document with the new message
       const updates: { openMessage?: string; closedMessage?: string; awayMessage?: string } = {};
@@ -314,10 +346,13 @@ export const saveSymbolMessage = async (type: 'open' | 'closed' | 'away', messag
         updates
       );
       
+      console.log(`Successfully saved ${type} message`);
       return true;
     } catch (err) {
       // If document doesn't exist, create it
       if ((err as any)?.message?.includes('Document not found')) {
+        console.log("Symbol messages document not found, creating new one");
+        
         const data: { openMessage?: string; closedMessage?: string; awayMessage?: string } = {};
         if (type === 'open') {
           data.openMessage = message;
@@ -334,13 +369,14 @@ export const saveSymbolMessage = async (type: 'open' | 'closed' | 'away', messag
           data
         );
         
+        console.log(`Successfully created symbol messages document with ${type} message`);
         return true;
       }
       
       throw err;
     }
   } catch (err) {
-    console.error('Error saving symbol message:', err);
+    console.error(`Error saving ${type} symbol message:`, err);
     return false;
   }
 };
@@ -352,11 +388,15 @@ export const getSymbolMessages = async (): Promise<{
   awayMessage?: string;
 } | null> => {
   try {
+    console.log("Getting symbol messages...");
+    
     const doc = await databases.getDocument(
       APPWRITE_DATABASE_ID,
       COLLECTION_SYMBOL_MESSAGES,
       DOCUMENT_SYMBOL_MESSAGES_ID
     );
+    
+    console.log("Retrieved symbol messages:", doc);
     
     return {
       openMessage: doc.openMessage || '',
@@ -367,6 +407,7 @@ export const getSymbolMessages = async (): Promise<{
     console.error('Error fetching symbol messages:', err);
     // Return empty messages if document doesn't exist yet
     if ((err as any)?.message?.includes('Document not found')) {
+      console.log("Symbol messages document not found, returning default values");
       return { openMessage: '', closedMessage: '', awayMessage: '' };
     }
     return null;

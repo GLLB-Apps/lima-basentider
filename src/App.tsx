@@ -88,8 +88,11 @@ const App: React.FC = () => {
         
         // Get initial override status
         const overrideStatus = await getOverrideStatus();
-        setManualOverride(overrideStatus.manualOverride);
-        setOverrideMessage(overrideStatus.message);
+        console.log('Loaded override status:', overrideStatus); // Debug log
+        
+        // Set these values from what's stored in Appwrite
+        setManualOverride(overrideStatus.manualOverride === true);
+        setOverrideMessage(overrideStatus.message || '');
 
         // Load symbol messages
         const messages = await getSymbolMessages();
@@ -98,11 +101,22 @@ const App: React.FC = () => {
           setClosedSymbolMessage(messages.closedMessage || 'Vi har stängt');
           if (messages.awayMessage) {
             setAwaySymbolMessage(messages.awayMessage);
+            // If override is active but no override message, use the away message
+            if (overrideStatus.manualOverride && !overrideStatus.message) {
+              setOverrideMessage(messages.awayMessage);
+            }
           }
         }
 
         // Load symbols
-        loadSymbols();
+        await loadSymbols();
+        
+        // Display debug status
+        if (overrideStatus.manualOverride) {
+          console.log('Away mode is active with message:', overrideStatus.message);
+        } else {
+          console.log('Away mode is not active');
+        }
       } catch (error) {
         console.error('Error loading data:', error);
         showSnackbar('Error loading data');
@@ -118,23 +132,33 @@ const App: React.FC = () => {
   const loadSymbols = async () => {
     try {
       // Load open symbol
-      const openUrl = getSymbolUrl('open');
-      if (openUrl) {
-        setOpenSymbol({
-          id: 'open',
-          name: 'Open Symbol',
-          image_url: openUrl + '&timestamp=' + Date.now()
-        });
+      try {
+        const openUrl = getSymbolUrl('open');
+        if (openUrl) {
+          setOpenSymbol({
+            id: 'open',
+            name: 'Open Symbol',
+            image_url: openUrl + '&timestamp=' + Date.now()
+          });
+          console.log('Loaded open symbol');
+        }
+      } catch (err) {
+        console.error('Error loading open symbol:', err);
       }
 
       // Load closed symbol
-      const closedUrl = getSymbolUrl('closed');
-      if (closedUrl) {
-        setClosedSymbol({
-          id: 'closed',
-          name: 'Closed Symbol',
-          image_url: closedUrl + '&timestamp=' + Date.now()
-        });
+      try {
+        const closedUrl = getSymbolUrl('closed');
+        if (closedUrl) {
+          setClosedSymbol({
+            id: 'closed',
+            name: 'Closed Symbol',
+            image_url: closedUrl + '&timestamp=' + Date.now()
+          });
+          console.log('Loaded closed symbol');
+        }
+      } catch (err) {
+        console.error('Error loading closed symbol:', err);
       }
       
       // Load away symbol
@@ -146,9 +170,10 @@ const App: React.FC = () => {
             name: 'Away Symbol',
             image_url: awayUrl + '&timestamp=' + Date.now()
           });
+          console.log('Loaded away symbol');
         }
       } catch (err) {
-        console.log('Away symbol not found, will be created when needed');
+        console.log('Away symbol not found, will be created when needed:', err);
       }
     } catch (err) {
       console.error('Error loading saved symbols:', err);
@@ -213,26 +238,39 @@ const App: React.FC = () => {
     }
   };
 
-  // Handle override switch toggle - Modified for away mode
+  // Handle override switch toggle - Modified for away mode with better persistence
   const handleOverrideToggle = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const newOverrideState = event.target.checked;
     
     // If turning on override
     if (newOverrideState) {
-      setManualOverride(newOverrideState);
+      // Set state before showing dialog
+      setManualOverride(true);
       
-      // Always show symbol picker first when turning on away mode
+      // Save the override state immediately (with empty message if no previous one)
+      // This ensures the override state persists even if user refreshes before choosing symbol
+      try {
+        console.log('Saving initial override state...');
+        await updateOverrideStatus(true, overrideMessage || 'Borta för tillfället');
+      } catch (error) {
+        console.error('Error updating initial override state:', error);
+      }
+      
+      // Always show symbol picker when turning on away mode
       setAwaySymbolPickerOpen(true);
     } else {
       // If turning off, update with empty message
       setIsLoading(true);
       try {
-        const success = await updateOverrideStatus(newOverrideState, '');
+        console.log('Turning off away mode...');
+        const success = await updateOverrideStatus(false, '');
         if (success) {
-          setManualOverride(newOverrideState);
+          setManualOverride(false);
           setOverrideMessage('');
           showSnackbar('Bortaläge avstängt');
         } else {
+          // If the save failed, revert the toggle UI
+          event.preventDefault();
           showSnackbar('Kunde inte stänga av bortaläge');
         }
       } catch (error) {
@@ -248,8 +286,10 @@ const App: React.FC = () => {
   const handleSaveMessage = async () => {
     setIsLoading(true);
     try {
+      console.log('Saving override message:', overrideMessage);
+      
       // First save the override message to Appwrite
-      const success = await updateOverrideStatus(manualOverride, overrideMessage);
+      const success = await updateOverrideStatus(true, overrideMessage);
       
       // Then save it as the away symbol message
       if (success && overrideMessage) {
@@ -276,6 +316,10 @@ const App: React.FC = () => {
     // If canceling when first turning on, revert the switch
     if (manualOverride && overrideMessage === '') {
       setManualOverride(false);
+      // Also update the database to turn off override
+      updateOverrideStatus(false, '').catch(err => {
+        console.error('Error turning off override after cancel:', err);
+      });
     }
     setMessageDialogOpen(false);
   };
@@ -285,32 +329,58 @@ const App: React.FC = () => {
     // If closing without selecting a symbol, revert the switch
     if (manualOverride && !awaySymbol) {
       setManualOverride(false);
+      // Also update the database to turn off override
+      updateOverrideStatus(false, '').catch(err => {
+        console.error('Error turning off override after symbol picker close:', err);
+      });
     }
     setAwaySymbolPickerOpen(false);
   };
 
-  // Handle away symbol selection
-  const handleAwaySymbolCompleted = (data: { svgString: string; id?: string; message: string; url: string }) => {
-    // Create a symbol object
-    const symbol: Symbol = {
-      id: 'away',
-      name: 'Away Symbol',
-      image_url: data.url + '&timestamp=' + Date.now(),
-      svg: data.svgString
-    };
-    
-    // Update away symbol state
-    setAwaySymbol(symbol);
-    
-    // If a message was provided with the symbol, use it
-    if (data.message) {
-      setOverrideMessage(data.message);
-      setAwaySymbolMessage(data.message);
+  // Handle away symbol selection with better persistence
+  const handleAwaySymbolCompleted = async (data: { svgString: string; id?: string; message: string; url: string }) => {
+    setIsLoading(true);
+    try {
+      console.log('Selected away symbol:', data);
+      
+      // Create a symbol object
+      const symbol: Symbol = {
+        id: 'away',
+        name: 'Away Symbol',
+        image_url: data.url + '&timestamp=' + Date.now(),
+        svg: data.svgString
+      };
+      
+      // Update away symbol state
+      setAwaySymbol(symbol);
+      
+      // If a message was provided with the symbol, use it
+      if (data.message) {
+        setOverrideMessage(data.message);
+        setAwaySymbolMessage(data.message);
+        
+        // Save the override status immediately to ensure persistence
+        await updateOverrideStatus(true, data.message);
+        
+        // Also save as the away symbol message
+        await saveSymbolMessage('away', data.message);
+      }
+      
+      // Close symbol picker and open message dialog
+      setAwaySymbolPickerOpen(false);
+      
+      // Only show message dialog if we need to set a message
+      if (!data.message) {
+        setMessageDialogOpen(true);
+      } else {
+        showSnackbar('Bortaläge aktiverat med vald symbol och meddelande');
+      }
+    } catch (error) {
+      console.error('Error handling away symbol selection:', error);
+      showSnackbar('Ett fel uppstod vid val av bortaläges-symbol');
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Close symbol picker and open message dialog
-    setAwaySymbolPickerOpen(false);
-    setMessageDialogOpen(true);
   };
 
   const findNextOpening = (scheduleData: DaySchedule[]): NextOpening => {
