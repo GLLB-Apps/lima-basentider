@@ -23,3 +23,11 @@ export interface TimeSlot {
     time: string;
     minutesUntil: number;
   } 
+
+  export interface InboxMessage {
+    id: string;
+    title: string;
+    content: string;
+    date: string;
+    isRead: boolean;
+  }

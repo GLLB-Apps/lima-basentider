@@ -6,7 +6,7 @@ import {
   Switch, FormControlLabel, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField
 } from '@mui/material';
-import { LogIn, LogOut, Calendar, Circle, X } from 'lucide-react';
+import { LogIn, LogOut, Calendar, Circle, X, Gavel } from 'lucide-react';
 import { theme } from './theme';
 import { User, DaySchedule, TimeSlot, NextOpening } from './types';
 import {
@@ -17,6 +17,7 @@ import LoginDialog from './components/LoginScreen';
 import TimeSlotEditDialog from './components/TimeSlotEditDialog';
 import StatusScreen from './components/StatusScreen';
 import ScheduleScreen from './components/ScheduleScreen';
+import MeetingsScreen from './components/MeetingsScreen';
 import MulberrySymbols from './components/MulberrySymbolPicker';
 import {
   getSchedule, addTimeSlot as addTimeSlotToDb,
@@ -83,16 +84,17 @@ const App: React.FC = () => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const schedule = await getSchedule();
-        setScheduleData(schedule);
-        
-        // Get initial override status
+        // Always load override status first, before checking schedule
         const overrideStatus = await getOverrideStatus();
         console.log('Loaded override status:', overrideStatus); // Debug log
         
         // Set these values from what's stored in Appwrite
         setManualOverride(overrideStatus.manualOverride === true);
         setOverrideMessage(overrideStatus.message || '');
+        
+        // Then load schedule
+        const schedule = await getSchedule();
+        setScheduleData(schedule);
 
         // Load symbol messages
         const messages = await getSymbolMessages();
@@ -180,15 +182,80 @@ const App: React.FC = () => {
     }
   };
 
-  // Update time every minute
+  // Update time every minute and also check away mode status
   useEffect(() => {
-    const updateTime = () => {
+    const updateTime = async () => {
       const now = new Date();
       const hours = now.getHours().toString().padStart(2, '0');
       const minutes = now.getMinutes().toString().padStart(2, '0');
       setCurrentTime(`${hours}:${minutes}`);
       setCurrentDay(getDayOfWeekSwedish(now));
       setCurrentTimeMinutes(now.getHours() * 60 + now.getMinutes());
+      
+      // Check away mode status on each minute update
+      try {
+        // Check override status first
+        const overrideStatus = await getOverrideStatus();
+        setManualOverride(overrideStatus.manualOverride === true);
+        if (overrideStatus.manualOverride) {
+          setOverrideMessage(overrideStatus.message || '');
+          console.log('Away mode check: active with message:', overrideStatus.message);
+        } else {
+          console.log('Away mode check: not active');
+        }
+        
+        // Reload symbol messages
+        const messages = await getSymbolMessages();
+        if (messages) {
+          setOpenSymbolMessage(messages.openMessage || 'Vi har öppet');
+          setClosedSymbolMessage(messages.closedMessage || 'Vi har stängt');
+          if (messages.awayMessage) {
+            setAwaySymbolMessage(messages.awayMessage);
+            // If override is active but no override message, use the away message
+            if (overrideStatus.manualOverride && !overrideStatus.message) {
+              setOverrideMessage(messages.awayMessage);
+            }
+          }
+        }
+        
+        // Reload symbols with timestamp to prevent caching
+        try {
+          // Reload open symbol
+          const openUrl = getSymbolUrl('open');
+          if (openUrl) {
+            setOpenSymbol({
+              id: 'open',
+              name: 'Open Symbol',
+              image_url: openUrl + '&timestamp=' + Date.now()
+            });
+          }
+          
+          // Reload closed symbol
+          const closedUrl = getSymbolUrl('closed');
+          if (closedUrl) {
+            setClosedSymbol({
+              id: 'closed',
+              name: 'Closed Symbol',
+              image_url: closedUrl + '&timestamp=' + Date.now()
+            });
+          }
+          
+          // Reload away symbol
+          const awayUrl = getSymbolUrl('away');
+          if (awayUrl) {
+            setAwaySymbol({
+              id: 'away',
+              name: 'Away Symbol',
+              image_url: awayUrl + '&timestamp=' + Date.now()
+            });
+          }
+        } catch (err) {
+          console.error('Error reloading symbols:', err);
+        }
+        
+      } catch (error) {
+        console.error('Error checking override status:', error);
+      }
     };
 
     updateTime();
@@ -197,8 +264,11 @@ const App: React.FC = () => {
   }, []);
 
   // Update next opening when time or schedule changes
+  // Modified to check away mode first before calculating next opening
   useEffect(() => {
     if (scheduleData.length > 0) {
+      // Always calculate next opening time, regardless of away mode
+      // This way we can show when we would normally open next even in away mode
       const next = findNextOpening(scheduleData);
       setNextOpening(next);
     }
@@ -383,6 +453,26 @@ const App: React.FC = () => {
     }
   };
 
+  // Modified to check current status taking away mode into account
+  const isCurrentlyOpen = (): boolean => {
+    // Always check away mode first - if active, we're not open
+    if (manualOverride) {
+      return false;
+    }
+    
+    // If not in away mode, check schedule as usual
+    const currentDayIndex = getCurrentDayIndex();
+    const currentDay = scheduleData[currentDayIndex];
+    
+    if (!currentDay) return false;
+    
+    return currentDay.times.some(timeSlot => {
+      const startMinutes = timeToMinutes(timeSlot.start);
+      const endMinutes = timeToMinutes(timeSlot.end);
+      return currentTimeMinutes >= startMinutes && currentTimeMinutes < endMinutes;
+    });
+  };
+
   const findNextOpening = (scheduleData: DaySchedule[]): NextOpening => {
     const now = new Date();
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -554,7 +644,7 @@ const App: React.FC = () => {
       <Box sx={{ pb: 7, minHeight: '100vh' }}>
         <AppBar position="static">
           <Toolbar>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>Öppettider</Typography>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>LLSSYS</Typography>
             
             {isLoggedIn && (
               <FormControlLabel
@@ -586,8 +676,7 @@ const App: React.FC = () => {
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 120px)' }}>
             <CircularProgress />
           </Box>
-        ) : (
-          activeTab === 0 ? (
+        ) : activeTab === 0 ? (
             <StatusScreen
               currentDay={currentDay}
               currentTime={currentTime}
@@ -602,8 +691,9 @@ const App: React.FC = () => {
               awaySymbolMessage={awaySymbolMessage}
               manualOverride={manualOverride}
               overrideMessage={overrideMessage}
+              isCurrentlyOpen={isCurrentlyOpen()} // Pass the calculated status
             />
-          ) : (
+          ) : activeTab === 1 ? (
             <ScheduleScreen
               currentDay={currentDay}
               currentTime={currentTime}
@@ -619,9 +709,14 @@ const App: React.FC = () => {
               openSymbolMessage={openSymbolMessage}
               closedSymbolMessage={closedSymbolMessage}
               onSymbolUpdate={handleSymbolUpdate}
+              manualoverride={manualOverride} // Pass away mode state
             />
-          )
-        )}
+          ) : (
+            <MeetingsScreen 
+              isLoggedIn={isLoggedIn}
+              currentUser={currentUser}
+            />
+          )}
 
         <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0 }} elevation={3}>
           <BottomNavigation
@@ -631,6 +726,7 @@ const App: React.FC = () => {
           >
             <BottomNavigationAction label="Just nu" icon={<Circle size={24} />} />
             <BottomNavigationAction label="Schema" icon={<Calendar size={24} />} />
+            <BottomNavigationAction label="Möten" icon={<Gavel size={24} />} />
           </BottomNavigation>
         </Paper>
 

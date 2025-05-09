@@ -49,6 +49,7 @@ type ScheduleScreenProps = {
   openSymbolMessage?: string;
   closedSymbolMessage?: string;
   onSymbolUpdate?: (type: 'open' | 'closed', symbol: Symbol) => void;
+  manualoverride?: boolean;
 };
 
 const ScheduleScreen: React.FC<ScheduleScreenProps> = ({

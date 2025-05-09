@@ -1,5 +1,5 @@
 import { Client, Databases, Storage, ID, Query } from 'appwrite';
-import { DaySchedule, TimeSlot, User } from '../types';
+import { DaySchedule, TimeSlot, User, InboxMessage } from '../types';
 import { initialScheduleData, users as localUsers, dayColors } from '../data';
 
 // Appwrite setup
@@ -14,6 +14,7 @@ const DOCUMENT_OVERRIDE_ID = '680b61fa0002c4d2d61d';
 const BUCKET_SYMBOLS = '680fc0ed0025e03d14b5';
 const COLLECTION_SYMBOL_MESSAGES = 'COLLECTION_SYMBOL_MESSAGES'; // Collection ID for symbol messages
 const DOCUMENT_SYMBOL_MESSAGES_ID = '68113585000120b05aa2'; // Document ID for symbol messages
+const COLLECTION_INBOX = '681e3fff001cf5968f50'; // Collection ID for inbox messages
 
 if (!APPWRITE_ENDPOINT || !APPWRITE_PROJECT_ID || !APPWRITE_DATABASE_ID) {
   console.error('Missing Appwrite environment variables');
@@ -411,5 +412,103 @@ export const getSymbolMessages = async (): Promise<{
       return { openMessage: '', closedMessage: '', awayMessage: '' };
     }
     return null;
+  }
+};
+
+// INBOX FUNCTIONS
+
+// Get all inbox messages
+export const getInboxMessages = async (): Promise<InboxMessage[]> => {
+  try {
+    console.log("Fetching inbox messages...");
+    
+    const response = await databases.listDocuments(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_INBOX,
+      [Query.orderDesc('$createdAt')] // Latest messages first using Appwrite's built-in field
+    );
+    
+    console.log("Retrieved inbox messages:", response.documents.length);
+    
+    return response.documents.map(doc => ({
+      id: doc.$id,
+      title: doc.title,
+      content: doc.content,
+      date: new Date(doc.$createdAt).toISOString().split('T')[0], // Convert Appwrite's timestamp to YYYY-MM-DD
+      isRead: doc.isRead
+    }));
+  } catch (err) {
+    console.error('Error fetching inbox messages:', err);
+    return [];
+  }
+};
+
+// Create a new inbox message (for non-logged-in users)
+export const createInboxMessage = async (message: { title: string; content: string }): Promise<InboxMessage | null> => {
+  try {
+    console.log("Creating new inbox message:", message);
+    
+    const response = await databases.createDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_INBOX,
+      ID.unique(),
+      {
+        title: message.title,
+        content: message.content,
+        isRead: false
+      }
+    );
+    
+    console.log("Successfully created inbox message:", response.$id);
+    
+    return {
+      id: response.$id,
+      title: response.title,
+      content: response.content,
+      date: new Date(response.$createdAt).toISOString().split('T')[0], // Use Appwrite's built-in $createdAt
+      isRead: response.isRead
+    };
+  } catch (err) {
+    console.error('Error creating inbox message:', err);
+    return null;
+  }
+};
+
+// Mark a message as read (for logged-in users)
+export const markMessageAsRead = async (id: string): Promise<boolean> => {
+  try {
+    console.log("Marking message as read:", id);
+    
+    await databases.updateDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_INBOX,
+      id,
+      { isRead: true }
+    );
+    
+    console.log("Successfully marked message as read");
+    return true;
+  } catch (err) {
+    console.error('Error marking message as read:', err);
+    return false;
+  }
+};
+
+// Delete an inbox message (for logged-in users)
+export const deleteInboxMessage = async (id: string): Promise<boolean> => {
+  try {
+    console.log("Deleting inbox message:", id);
+    
+    await databases.deleteDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_INBOX,
+      id
+    );
+    
+    console.log("Successfully deleted inbox message");
+    return true;
+  } catch (err) {
+    console.error('Error deleting inbox message:', err);
+    return false;
   }
 };
