@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Container,
   Typography,
-  Chip,
   Paper,
   IconButton,
   Dialog,
@@ -11,18 +10,20 @@ import {
   DialogContent,
   Snackbar,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Divider
 } from '@mui/material';
 import {
-  Clock,
   Plus,
   Edit,
   Trash2,
   User as UserIcon,
   Image as ImageIcon
 } from 'lucide-react';
+import Clock from 'react-clock';
+import 'react-clock/dist/Clock.css'; // Import the styles
 
-import { DaySchedule, TimeSlot, User } from '../types';
+import { DaySchedule, TimeSlot, User, NextOpening } from '../types';
 import { timeToMinutes } from '../utils';
 import MulberrySymbols from './MulberrySymbolPicker';
 import { uploadSymbol, getSymbolUrl } from '../services/appwriteService';
@@ -36,9 +37,9 @@ interface Symbol {
 
 type ScheduleScreenProps = {
   currentDay: string;
-  currentTime: string;
-  currentTimeMinutes: number;
-  nextOpening: { day: string; time: string; minutesUntil: number };
+  currentTime?: string;
+  currentTimeMinutes?: number;
+  nextOpening: NextOpening;
   scheduleData: DaySchedule[];
   isLoggedIn: boolean;
   isAdmin: boolean;
@@ -50,6 +51,36 @@ type ScheduleScreenProps = {
   closedSymbolMessage?: string;
   onSymbolUpdate?: (type: 'open' | 'closed', symbol: Symbol) => void;
   manualoverride?: boolean;
+};
+
+// Map short day names to full Swedish day names
+const fullDayNames: Record<string, string> = {
+  'Mån': 'Måndag',
+  'Tis': 'Tisdag',
+  'Ons': 'Onsdag',
+  'Tors': 'Torsdag',
+  'Fre': 'Fredag',
+  'Lör': 'Lördag',
+  'Sön': 'Söndag'
+};
+
+// Helper to get current date in Swedish format
+const getCurrentDateString = (): string => {
+  const now = new Date();
+  
+  // Get day of month
+  const day = now.getDate();
+  
+  // Get month name in Swedish
+  const monthNames = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 
+                      'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+  const month = monthNames[now.getMonth()];
+  
+  // Get year
+  const year = now.getFullYear();
+  
+  // Format as "2 maj 2025"
+  return `${day} ${month} ${year}`;
 };
 
 const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
@@ -82,6 +113,69 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
     message: string;
     severity: 'success' | 'error' | 'info';
   }>({ open: false, message: '', severity: 'info' });
+
+  // Create a separate state for the clock that updates every second
+  const [clockTime, setClockTime] = useState(new Date());
+  
+  // State for business hours
+  const [now, setNow] = useState(new Date());
+  const displayTime = currentTime || now.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  const timeInMinutes = currentTimeMinutes || (now.getHours() * 60 + now.getMinutes());
+  
+  // Get the current full date string
+  const currentDateString = useMemo(() => getCurrentDateString(), []);
+  
+  // Get full day name
+  const fullDayName = useMemo(() => fullDayNames[currentDay] || currentDay, [currentDay]);
+  
+  // Current day schedule and color
+  const currentDaySchedule = useMemo(() => {
+    return scheduleData.find(day => day.day === currentDay);
+  }, [scheduleData, currentDay]);
+  
+  // Find day color but use a lighter version
+  const dayColor = useMemo(() => {
+    // Find the day in schedule data
+    const daySchedule = scheduleData.find(day => day.day === currentDay);
+    if (daySchedule && daySchedule.color) {
+      // Use a lighter version by applying opacity via rgba
+      // This assumes the color is in a format we can extract values from
+      if (daySchedule.color.startsWith('#')) {
+        // Add some transparency to the hex color
+        return daySchedule.color + '88'; // 88 is approx 50% opacity in hex
+      } else if (daySchedule.color.startsWith('rgb')) {
+        // Convert rgb to rgba with opacity
+        return daySchedule.color.replace('rgb', 'rgba').replace(')', ', 0.5)');
+      }
+      return daySchedule.color;
+    }
+    return 'rgba(25, 118, 210, 0.5)'; // Fallback to a light blue
+  }, [currentDay, scheduleData]);
+  
+  // Clock-specific useEffect that updates every second for smooth animation
+  useEffect(() => {
+    // Update the clock time every second
+    const clockInterval = setInterval(() => {
+      setClockTime(new Date());
+    }, 1000);
+    
+    // Clean up the interval
+    return () => clearInterval(clockInterval);
+  }, []);
+  
+  // Business logic update (slower frequency)
+  useEffect(() => {
+    if (!currentTime) {
+      // This updates the business logic time (minutes-based)
+      // This can run at a lower frequency since it's just for calculations
+      const timeInterval = setInterval(() => {
+        const newNow = new Date();
+        setNow(newNow);
+      }, 60000); // Update business logic every minute
+      
+      return () => clearInterval(timeInterval);
+    }
+  }, [currentTime]);
 
   // Fetch saved symbols on component mount
   useEffect(() => {
@@ -165,9 +259,68 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
   };
 
   return (
-    <Container maxWidth="md" sx={{ mt: 2 }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'center' }}>
-        <Chip icon={<Clock size={16} />} label={`${currentDay} ${currentTime}`} color="primary" variant="outlined" />
+    <Container maxWidth="md" sx={{ mt: 4, mb: 8 }}>
+      {/* Day and Clock Header */}
+      <Box sx={{ textAlign: 'center', mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, mb: 3 }}>
+          {/* Day widget */}
+          <Paper 
+            elevation={2} 
+            sx={{ 
+              px: 3, 
+              py: 1.5, 
+              borderRadius: 2,
+              bgcolor: dayColor,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: 150
+            }}
+          >
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                fontWeight: 'bold', 
+                color: 'rgba(0,0,0,0.85)',
+                mb: 0.5
+              }}
+            >
+              {fullDayName}
+            </Typography>
+            <Typography 
+              variant="body2" 
+              sx={{ color: 'rgba(0,0,0,0.7)' }}
+            >
+              {currentDateString}
+            </Typography>
+          </Paper>
+          
+          {/* Real-time clock component */}
+          <Box sx={{ 
+            p: 2, 
+            borderRadius: '50%', 
+            bgcolor: 'background.paper',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 3,
+            width: 160,
+            height: 160
+          }}>
+            <Clock 
+              value={clockTime} // Use clockTime that updates every second
+              size={140}
+              renderNumbers={true}
+              hourHandLength={50}
+              hourHandWidth={4}
+              minuteHandLength={70}
+              minuteHandWidth={2}
+              secondHandLength={75}
+              secondHandWidth={1}
+            />
+          </Box>
+        </Box>
       </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -175,7 +328,12 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
           Schema
         </Typography>
         {isLoggedIn && (
-          <Chip icon={<UserIcon size={16} />} label={`${currentUser?.name}`} color="primary" sx={{ ml: 2 }} />
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <UserIcon size={16} style={{ marginRight: 8 }} />
+            <Typography variant="body1" fontWeight="medium">
+              {currentUser?.name}
+            </Typography>
+          </Box>
         )}
       </Box>
 
@@ -183,7 +341,7 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
         {sortedScheduleData.map((day) => (
           <DayCard
             key={day.id}
-            {...{ day, currentDay, currentTimeMinutes, nextOpening, isLoggedIn, handleAddTimeSlot, handleEditTimeSlot, handleDeleteTimeSlot, openSymbol, closedSymbol }}
+            {...{ day, currentDay, timeInMinutes, nextOpening, isLoggedIn, handleAddTimeSlot, handleEditTimeSlot, handleDeleteTimeSlot, openSymbol, closedSymbol }}
           />
         ))}
       </Box>
@@ -192,7 +350,7 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
         {sortedScheduleData.map((day) => (
           <Box key={day.id} sx={{ width: 'calc(25% - 16px)', minWidth: '150px' }}>
             <DayCard
-              {...{ day, currentDay, currentTimeMinutes, nextOpening, isLoggedIn, handleAddTimeSlot, handleEditTimeSlot, handleDeleteTimeSlot, openSymbol, closedSymbol }}
+              {...{ day, currentDay, timeInMinutes, nextOpening, isLoggedIn, handleAddTimeSlot, handleEditTimeSlot, handleDeleteTimeSlot, openSymbol, closedSymbol }}
             />
           </Box>
         ))}
@@ -289,7 +447,7 @@ export default ScheduleScreen;
 const DayCard = ({
   day,
   currentDay,
-  currentTimeMinutes,
+  timeInMinutes,
   nextOpening,
   isLoggedIn,
   handleAddTimeSlot,
@@ -300,8 +458,8 @@ const DayCard = ({
 }: {
   day: DaySchedule;
   currentDay: string;
-  currentTimeMinutes: number;
-  nextOpening: { day: string; time: string; minutesUntil: number };
+  timeInMinutes: number;
+  nextOpening: NextOpening;
   isLoggedIn: boolean;
   handleAddTimeSlot: (dayId: string) => void;
   handleEditTimeSlot: (dayId: string, timeSlot: TimeSlot) => void;
@@ -309,7 +467,7 @@ const DayCard = ({
   openSymbol: Symbol | null;
   closedSymbol: Symbol | null;
 }) => {
-  const hasCurrentTimeSlot = day.times.some(time => currentDay === day.day && currentTimeMinutes >= timeToMinutes(time.start) && currentTimeMinutes < timeToMinutes(time.end));
+  const hasCurrentTimeSlot = day.times.some(time => currentDay === day.day && timeInMinutes >= timeToMinutes(time.start) && timeInMinutes < timeToMinutes(time.end));
 
   // Determine which symbol to show based on whether the place is currently open
   const symbolToShow = hasCurrentTimeSlot ? openSymbol : closedSymbol;
@@ -330,7 +488,7 @@ const DayCard = ({
           <Typography sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}>Inga tider schemalagda</Typography>
         ) : (
           day.times.map((time) => {
-            const isCurrentTimeSlot = currentDay === day.day && currentTimeMinutes >= timeToMinutes(time.start) && currentTimeMinutes < timeToMinutes(time.end);
+            const isCurrentTimeSlot = currentDay === day.day && timeInMinutes >= timeToMinutes(time.start) && timeInMinutes < timeToMinutes(time.end);
             const isNextTimeSlot = nextOpening.day === day.day && nextOpening.time === time.start;
             return (
               <Box key={time.id} sx={{ bgcolor: isCurrentTimeSlot ? 'rgba(0, 255, 8, 0.5)' : isNextTimeSlot ? 'rgba(168, 151, 214, 0.95)' : 'rgba(255,255,255,0.75)', p: 1, mb: 1, borderRadius: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: (isCurrentTimeSlot || isNextTimeSlot) ? '1px solid' : 'none', borderColor: isCurrentTimeSlot ? 'success.main' : 'primary.main' }}>
@@ -339,8 +497,8 @@ const DayCard = ({
                 </Box>
                 {isLoggedIn && (
                   <Box sx={{ display: 'flex' }}>
-                    <IconButton size="small" onClick={() => handleEditTimeSlot(day.id, time)} color="primary"><Edit size={24} /></IconButton>
-                    <IconButton size="small" onClick={() => handleDeleteTimeSlot(day.id, time.id)} color="error"><Trash2 size={24} /></IconButton>
+                    <IconButton size="small" onClick={() => handleEditTimeSlot(day.id, time)} color="primary"><Edit size={16} /></IconButton>
+                    <IconButton size="small" onClick={() => handleDeleteTimeSlot(day.id, time.id)} color="error"><Trash2 size={16} /></IconButton>
                   </Box>
                 )}
               </Box>
