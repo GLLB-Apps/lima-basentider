@@ -644,7 +644,7 @@ const App: React.FC = () => {
       <Box sx={{ pb: 7, minHeight: '100vh' }}>
         <AppBar position="static">
           <Toolbar>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>LLSSYS</Typography>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>LIMA+</Typography>
             
             {isLoggedIn && (
               <FormControlLabel
