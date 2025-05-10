@@ -355,7 +355,7 @@ const StatusScreen = ({
             }}
           >
             <Typography 
-              variant="h6" 
+              variant="h4" 
               sx={{ 
                 fontWeight: 'bold', 
                 color: 'rgba(0,0,0,0.85)',
@@ -365,7 +365,7 @@ const StatusScreen = ({
               {fullDayName}
             </Typography>
             <Typography 
-              variant="body2" 
+              variant="h6" 
               sx={{ color: 'rgba(0,0,0,0.7)' }}
             >
               {currentDateString}
@@ -624,7 +624,7 @@ const StatusScreen = ({
               variant="determinate" 
               value={closeProgressPercent} 
               sx={{ 
-                height: 20,
+                height: 35,
                 borderRadius: 4,
                 backgroundColor: 'rgba(0, 200, 0, 0.1)', 
                 '& .MuiLinearProgress-bar': {
@@ -749,7 +749,7 @@ const StatusScreen = ({
               variant="determinate" 
               value={progressPercent} 
               sx={{ 
-                height: 20,
+                height: 35,
                 borderRadius: 4,
                 backgroundColor: 'rgba(200, 0, 0, 0.1)', 
                 '& .MuiLinearProgress-bar': {

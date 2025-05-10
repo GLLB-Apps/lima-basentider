@@ -279,7 +279,7 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
             }}
           >
             <Typography 
-              variant="h6" 
+              variant="h4" 
               sx={{ 
                 fontWeight: 'bold', 
                 color: 'rgba(0,0,0,0.85)',
@@ -289,7 +289,7 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
               {fullDayName}
             </Typography>
             <Typography 
-              variant="body2" 
+              variant="h6" 
               sx={{ color: 'rgba(0,0,0,0.7)' }}
             >
               {currentDateString}
@@ -327,14 +327,7 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
         <Typography variant="h4" component="h1" gutterBottom>
           Schema
         </Typography>
-        {isLoggedIn && (
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <UserIcon size={16} style={{ marginRight: 8 }} />
-            <Typography variant="body1" fontWeight="medium">
-              {currentUser?.name}
-            </Typography>
-          </Box>
-        )}
+        
       </Box>
 
       <Box sx={{ display: { xs: 'block', md: 'none' } }}>
@@ -471,6 +464,16 @@ const DayCard = ({
 
   // Determine which symbol to show based on whether the place is currently open
   const symbolToShow = hasCurrentTimeSlot ? openSymbol : closedSymbol;
+  
+  // Function to convert time string to Date object for the clock
+  const timeStringToDate = (timeStr: string) => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours);
+    date.setMinutes(minutes);
+    date.setSeconds(0);
+    return date;
+  };
 
   return (
     <Paper elevation={currentDay === day.day ? 5 : 2} sx={{ bgcolor: day.color, mb: 2, overflow: 'hidden', border: currentDay === day.day ? '2px solid #1976d2' : 'none' }}>
@@ -478,7 +481,7 @@ const DayCard = ({
         <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'rgba(0,0,0,0.85)' }}>{day.day} {currentDay === day.day && '(Idag)'}</Typography>
         {isLoggedIn && (
           <IconButton size="small" onClick={() => handleAddTimeSlot(day.id)} color="primary">
-            <Plus size={18} />
+            <Plus size={24} />
           </IconButton>
         )}
       </Box>
@@ -490,17 +493,75 @@ const DayCard = ({
           day.times.map((time) => {
             const isCurrentTimeSlot = currentDay === day.day && timeInMinutes >= timeToMinutes(time.start) && timeInMinutes < timeToMinutes(time.end);
             const isNextTimeSlot = nextOpening.day === day.day && nextOpening.time === time.start;
+            
+            // Create Date objects for start and end times
+            const startTime = timeStringToDate(time.start);
+            const endTime = timeStringToDate(time.end);
+            
             return (
-              <Box key={time.id} sx={{ bgcolor: isCurrentTimeSlot ? 'rgba(0, 255, 8, 0.5)' : isNextTimeSlot ? 'rgba(168, 151, 214, 0.95)' : 'rgba(255,255,255,0.75)', p: 1, mb: 1, borderRadius: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: (isCurrentTimeSlot || isNextTimeSlot) ? '1px solid' : 'none', borderColor: isCurrentTimeSlot ? 'success.main' : 'primary.main' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Typography variant="body1" sx={{ fontWeight: isCurrentTimeSlot || isNextTimeSlot ? '600' : '400' }}>{time.start} - {time.end}{isCurrentTimeSlot && ' (Nu)'}{isNextTimeSlot && ' (Nästa)'}</Typography>
-                </Box>
-                {isLoggedIn && (
-                  <Box sx={{ display: 'flex' }}>
-                    <IconButton size="small" onClick={() => handleEditTimeSlot(day.id, time)} color="primary"><Edit size={16} /></IconButton>
-                    <IconButton size="small" onClick={() => handleDeleteTimeSlot(day.id, time.id)} color="error"><Trash2 size={16} /></IconButton>
+              <Box key={time.id} sx={{ 
+                bgcolor: isCurrentTimeSlot ? 'rgba(0, 255, 8, 0.5)' : isNextTimeSlot ? 'rgba(168, 151, 214, 0.95)' : 'rgba(255,255,255,0.75)', 
+                p: 1, 
+                mb: 1, 
+                borderRadius: 1, 
+                display: 'flex', 
+                flexDirection: 'column',
+                border: (isCurrentTimeSlot || isNextTimeSlot) ? '1px solid' : 'none', 
+                borderColor: isCurrentTimeSlot ? 'success.main' : 'primary.main' 
+              }}>
+                {/* Top row with time text and buttons */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body1" sx={{ fontWeight: isCurrentTimeSlot || isNextTimeSlot ? '600' : '400' }}>
+                      {time.start} - {time.end}{isCurrentTimeSlot && ' (Nu)'}{isNextTimeSlot && ' (Nästa)'}
+                    </Typography>
                   </Box>
-                )}
+                  
+                  {isLoggedIn && (
+                    <Box sx={{ display: 'flex' }}>
+                      <IconButton size="small" onClick={() => handleEditTimeSlot(day.id, time)} color="primary">
+                        <Edit size={24} />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => handleDeleteTimeSlot(day.id, time.id)} color="error">
+                        <Trash2 size={24} />
+                      </IconButton>
+                    </Box>
+                  )}
+                </Box>
+                
+                {/* Bottom row with clocks */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mx: 2 }}>
+                  {/* Start time clock */}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ mb: 0.5 }}>Start</Typography>
+                    <Clock 
+                      value={startTime}
+                      size={55}
+                      renderNumbers={false}
+                      hourHandLength={40}
+                      hourHandWidth={2}
+                      minuteHandLength={60}
+                      minuteHandWidth={1}
+                      renderSecondHand={false}
+                      
+                    />
+                  </Box>
+                  
+                  {/* End time clock */}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ mb: 0.5 }}>Slut</Typography>
+                    <Clock 
+                      value={endTime}
+                      size={55}
+                      renderNumbers={false}
+                      hourHandLength={40}
+                      hourHandWidth={2}
+                      minuteHandLength={60}
+                      minuteHandWidth={1}
+                      renderSecondHand={false}
+                    />
+                  </Box>
+                </Box>
               </Box>
             );
           })
