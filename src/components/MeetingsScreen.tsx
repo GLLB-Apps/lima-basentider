@@ -17,6 +17,9 @@ import {
   getAllMeetings, createMeeting, updateMeeting, deleteMeeting as deleteMeetingService
 } from '../services/appwriteService';
 
+// Calendar icon URL - this is a basic example, replace with your actual icon
+const calendarIconUrl = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22850.394%22%20height%3D%22850.394%22%20viewBox%3D%220%200%20850.394%20850.394%22%20overflow%3D%22visible%22%3E%3Cpath%20fill%3D%22%23ff001c%22%20d%3D%22M696.88%20111.76v119.33h-.22v-.44H154.9V111.76z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M561.22%20636.97h135.44v135.44H561.22zM561.22%20501.53h135.44v135.439H561.22zM561.22%20366.09h135.44v135.44H561.22z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M561.22%20231.09h135.44v135H561.22zM425.78%20636.97h135.44v135.44H425.78zM425.78%20501.53h135.44v135.439H425.78zM425.78%20366.09h135.44v135.44H425.78z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M425.78%20231.09h135.44v135H425.78zM290.34%20636.97h135.44v135.44H290.34zM290.34%20501.53h135.44v135.439H290.34zM290.34%20366.09h135.44v135.44H290.34z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M290.34%20231.09h135.44v135H290.34zM154.9%20636.97h135.44v135.44H154.9zM154.9%20501.53h135.44v135.439H154.9z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M154.9%20366.09h135.44v135.44H154.9z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M154.9%20231.09h135.44v135H154.9z%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23231f20%22%3E%3Cpath%20stroke-width%3D%2221%22%20d%3D%22M154.9%20230.65h541.76v541.76H154.9V231.09M154.9%20636.97h541.76M154.9%20501.53h541.76M154.9%20366.09h541.76M561.22%20230.65v541.76M425.78%20230.65v541.76M290.34%20230.65v541.76%22%2F%3E%3Cpath%20stroke-width%3D%2221%22%20d%3D%22M154.9%20230.65V111.76h541.98v119.33H154.9z%22%2F%3E%3Cpath%20stroke-width%3D%2227.872%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M176.79%2082.73v21.22M225.56%2082.73v21.22M275.5%2082.82v21.21M324.27%2082.98v21.21M374.21%2083.31v21.21M425.78%2083.46v21.21M474.56%2083.46v21.21M524.49%2083.54v21.21M573.26%2083.71v21.21M623.2%2084.04v21.21M675.32%2082.83v21.21%22%2F%3E%3C%2Fg%3E%3Cpath%20fill%3D%22none%22%20d%3D%22M0%200h850.394v850.394H0z%22%2F%3E%3C%2Fsvg%3E";
+
 // Helper to get day of week from date string (YYYY-MM-DD)
 const getDayOfWeek = (dateString: string): string => {
   const date = new Date(dateString);
@@ -144,7 +147,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     title: '',
     content: ''
   });
-
   // Clock update effect
   useEffect(() => {
     // Update the clock time every second
@@ -359,7 +361,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       showSnackbar('Ett fel uppstod vid borttagning av mötet', 'error');
     }
   };
-
   // Inbox functions
   const handleOpenInboxDialog = () => {
     setInboxFormData({
@@ -538,6 +539,25 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             gap: 1.5
                           }}
                         >
+                          {/* Calendar Icon as simple img */}
+                          <Box 
+                            component="div"
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              mr: 0.5,
+                              flex: '0 0 auto',
+                            }}
+                          >
+                            <img 
+                              src={calendarIconUrl} 
+                              alt="Calendar" 
+                              width="48" 
+                              height="48"
+                            />
+                          </Box>
+                          
                           {/* Day Card - Using consistent styling */}
                           <Paper 
                             elevation={1} 
@@ -607,7 +627,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             <Clock 
                               value={meetingDateTime}
                               size={50}
-                            
+                              renderNumbers={false}
                               hourHandLength={20}
                               hourHandWidth={3}
                               minuteHandLength={30}
@@ -645,6 +665,25 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             gap: 2.5
                           }}
                         >
+                          {/* Calendar Icon as simple img */}
+                          <Box 
+                            component="div"
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flex: '0 0 auto',
+                              mr: 0.5
+                            }}
+                          >
+                            <img 
+                              src={calendarIconUrl} 
+                              alt="Calendar" 
+                              width="48" 
+                              height="48"
+                            />
+                          </Box>
+                          
                           {/* Day Card - Using consistent styling */}
                           <Paper 
                             elevation={1} 
@@ -714,7 +753,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             <Clock 
                               value={meetingDateTime}
                               size={70}
-                              
+                              renderNumbers={false}
                               hourHandLength={60}
                               hourHandWidth={3}
                               minuteHandLength={80}
@@ -1142,7 +1181,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                     meetingFormData.time
                   )}
                   size={100}
-                  renderNumbers={true}
+                  renderNumbers={false}
                   hourHandLength={40}
                   hourHandWidth={3}
                   minuteHandLength={60}
