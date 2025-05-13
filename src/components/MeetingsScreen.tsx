@@ -71,8 +71,8 @@ const getDayColor = (day: string): string => {
   return colorMap[day] || '#1976D2'; // Default to blue
 };
 
-// Helper function to create a Date object with a specific time (default 10:00)
-const createMeetingTimeDate = (dateString: string, timeString: string = "10:00"): Date => {
+// Helper function to create a Date object with a specific time (default 18:00)
+const createMeetingTimeDate = (dateString: string, timeString: string = "18:00"): Date => {
   const [year, month, day] = dateString.split('-').map(num => parseInt(num, 10));
   const [hours, minutes] = timeString.split(':').map(num => parseInt(num, 10));
   
@@ -125,9 +125,9 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   
-  // Meeting time state - For demonstration, using a fixed time (10:00 AM)
+  // Meeting time state - For demonstration, using a fixed time (18:00 AM)
   // In a real app, you might want to store meeting times in your database
-  const [meetingTime, setMeetingTime] = useState("10:00");
+  const [meetingTime, setMeetingTime] = useState("18:00");
   
   // Snackbar notification state
   const [snackbar, setSnackbar] = useState({
@@ -139,7 +139,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   // Simplified Meeting Form state
   const [meetingFormData, setMeetingFormData] = useState({
     date: '',
-    time: "10:00" // Default time
+    time: "18:00" // Default time
   });
   
   // Inbox Form state
@@ -254,7 +254,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       setSelectedMeeting(null);
       setMeetingFormData({
         date: getTodayDate(),
-        time: "10:00" // Default time
+        time: "18:00" // Default time
       });
       setIsEditingMeeting(false);
     }

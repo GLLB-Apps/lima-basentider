@@ -361,37 +361,34 @@ const StatusScreen = ({
   // Calculate progress towards next opening time - Always use 24 hours as the basis
   useEffect(() => {
     if (!manualOverride && !isOpen && nextOpening.minutesUntil > 0) {
-      // For consistency, always use 24 hours (1440 minutes) as the denominator
-      // This makes the progress bar represent "time of day" rather than specific wait time
+      // Change from 24 hours to 12 hours (720 minutes) as the denominator
+      const HOURS_12 = 12 * 60; // 12 hours in minutes
       
-      // Calculate what percentage of a 24-hour day has passed
-      // Example: If it's 6pm (18 hours) and we open at 6am (6 hours), we're at 75% of a 24-hour day
-      const hoursOfDay = (timeInMinutes / HOURS_24) * 100;
+      // Calculate what percentage of a 12-hour period has passed
+      const currentTimeInCycle = timeInMinutes % HOURS_12;
+      const percentOfCycle = (currentTimeInCycle / HOURS_12) * 100;
       
-      // Calculate when in the 24-hour cycle we'll open
-      // If nextOpening is today, this is straightforward
-      // If nextOpening is tomorrow, we need to adjust
-      let openingTimePercentage = 0;
-      
+      // Calculate when in the 12-hour cycle we'll open
+      let openingTimeMinutes;
       if (nextOpening.day === currentDay) {
-        // Opening is today, calculate as percentage of 24 hours
-        const openingTimeMinutes = timeToMinutes(nextOpening.time);
-        openingTimePercentage = (openingTimeMinutes / HOURS_24) * 100;
+        // Opening is today, use the actual opening time
+        openingTimeMinutes = timeToMinutes(nextOpening.time) % HOURS_12;
       } else {
-        // Opening is tomorrow or later, use a full 24-hour cycle
-        openingTimePercentage = 100;
+        // Opening is tomorrow or later
+        openingTimeMinutes = (timeToMinutes(nextOpening.time) + HOURS_12) % HOURS_12;
       }
       
-      // Progress is how far we've moved from last closing to next opening
-      // Use modular arithmetic to handle wrap-around at 100%
-      let percent = 0;
-      if (openingTimePercentage > hoursOfDay) {
-        // Normal case, we're before opening time
-        percent = (hoursOfDay / openingTimePercentage) * 100;
+      // Calculate the percentage of the cycle at which opening occurs
+      const openingPercentage = (openingTimeMinutes / HOURS_12) * 100;
+      
+      // Calculate progress percentage
+      let percent;
+      if (openingPercentage >= percentOfCycle) {
+        // Normal case: opening time is later in the cycle
+        percent = (percentOfCycle / openingPercentage) * 100;
       } else {
-        // We're after opening time in a 24-hour cycle, but still closed
-        // This means opening is tomorrow
-        percent = ((hoursOfDay - openingTimePercentage) / (100 - openingTimePercentage + 100)) * 100;
+        // Opening is in the next cycle
+        percent = (percentOfCycle / (100 + openingPercentage)) * 100;
       }
       
       // Ensure percent is always between 0-100
@@ -638,9 +635,9 @@ const StatusScreen = ({
               ) : (
                 <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
                   Ingen symbol
-                  </Typography>
+                </Typography>
               )}
-            </Box>
+              </Box>
             
             <Divider orientation="vertical" flexItem sx={{ mx: 1.75 }} />
             
@@ -657,8 +654,10 @@ const StatusScreen = ({
                   display: 'flex', 
                   flexDirection: 'column',
                   alignItems: 'center', 
-                  ml: 2
+                  ml: 2,
+                  minWidth: 100
                 }}>
+                  {/* Meeting icon with badge */}
                   <Badge 
                     color="primary" 
                     badgeContent=" " 
@@ -682,15 +681,43 @@ const StatusScreen = ({
                       src={calendarIconUrl}
                       alt="Meeting Today" 
                       sx={{ 
-                        height: 60, 
-                        maxWidth: 60,
+                        height: 50, 
+                        maxWidth: 50,
                         opacity: 0.9
                       }}
                     />
                   </Badge>
-                  <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary' }}>
-                    Basmöte {todaysMeeting?.time || '10:00'}
-                  </Typography>
+                  
+                  {/* Meeting time clock */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ 
+                      borderRadius: '50%', 
+                      bgcolor: 'background.paper',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: 1,
+                      width: 56,
+                      height: 56
+                    }}>
+                      <Clock 
+                        value={createDateWithTime(todaysMeeting?.time || '10:00')}
+                        size={50}
+                        renderNumbers={false}
+                        hourHandWidth={2}
+                        minuteHandWidth={1.5}
+                        hourHandLength={12}
+                        minuteHandLength={14}
+                        renderSecondHand={false}
+                        renderMinuteMarks={false}
+                        renderHourMarks={false}
+                      />
+                    </Box>
+                    
+                    <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary' }}>
+                      Basmöte
+                    </Typography>
+                  </Box>
                 </Box>
               </>
             )}
