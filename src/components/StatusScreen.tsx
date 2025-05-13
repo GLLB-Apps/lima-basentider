@@ -7,14 +7,17 @@ import {
   Card,
   CardContent,
   Divider,
-  LinearProgress
+  LinearProgress,
+  Badge,
+  Tooltip
 } from '@mui/material';
 import Clock from 'react-clock';
 import 'react-clock/dist/Clock.css'; // Import the styles
-import { DaySchedule, NextOpening } from '../types';
+import { DaySchedule, NextOpening, Meeting } from '../types';
 import { timeToMinutes } from '../utils';
 import { dayColors } from '../data'; // Make sure this import is at the top
 import ClockDayCard from '../components/ClockDayCard'; // Import our new combined component
+import { getAllMeetings } from '../services/appwriteService';
 
 interface Symbol {
   id: string;
@@ -38,6 +41,7 @@ type StatusScreenProps = {
   manualOverride?: boolean;
   overrideMessage?: string;
   isCurrentlyOpen?: boolean;
+  meetings?: Meeting[]; // Add meetings array prop
 };
 
 // Map short day names to full Swedish day names
@@ -70,34 +74,52 @@ const getCurrentDateString = (): string => {
   return `${day} ${month} ${year}`;
 };
 
-  // Helper function to ensure we have a color with proper opacity
-  const getProperDayColor = (day: string, scheduleData: any[]): string => {
-    const daySchedule = scheduleData.find(d => d.day === day);
-    let baseColor = null;
-    
-    // Try to get color from schedule data first
-    if (daySchedule && daySchedule.color) {
-      baseColor = daySchedule.color;
-    } 
-    // Then try default day colors
-    else if (dayColors && dayColors[day]) {
-      baseColor = dayColors[day];
-    }
-    
-    // If no color found, use default
-    if (!baseColor) {
-      return 'rgba(25, 118, 210, 0.5)';
-    }
-    
-    // Make sure the color has opacity
-    if (baseColor.startsWith('#')) {
-      return baseColor + '88'; // Add 50% opacity in hex format
-    } else if (baseColor.startsWith('rgb') && !baseColor.startsWith('rgba')) {
-      return baseColor.replace('rgb', 'rgba').replace(')', ', 0.5)');
-    }
-    
-    return baseColor;
-  };
+// Helper to get today's date in YYYY-MM-DD format for meeting comparison
+const getTodayDateString = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Helper function to ensure we have a color with proper opacity
+const getProperDayColor = (day: string, scheduleData: any[]): string => {
+  const daySchedule = scheduleData.find(d => d.day === day);
+  let baseColor = null;
+  
+  // Try to get color from schedule data first
+  if (daySchedule && daySchedule.color) {
+    baseColor = daySchedule.color;
+  } 
+  // Then try default day colors
+  else if (dayColors && dayColors[day]) {
+    baseColor = dayColors[day];
+  }
+  
+  // If no color found, use default
+  if (!baseColor) {
+    return 'rgba(25, 118, 210, 0.5)';
+  }
+  
+  // Make sure the color has opacity
+  if (baseColor.startsWith('#')) {
+    return baseColor + '88'; // Add 50% opacity in hex format
+  } else if (baseColor.startsWith('rgb') && !baseColor.startsWith('rgba')) {
+    return baseColor.replace('rgb', 'rgba').replace(')', ', 0.5)');
+  }
+  
+  return baseColor;
+};
+
+// Helper function to check if two dates are the same day
+const isSameDay = (date1: Date, date2: Date): boolean => {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+};
 
 const StatusScreen = ({
   currentDay,
@@ -112,7 +134,8 @@ const StatusScreen = ({
   closedSymbolMessage = "Vi har stängt",
   awaySymbolMessage = "Borta för tillfället",
   manualOverride = false,
-  overrideMessage = ""
+  overrideMessage = "",
+  meetings = []
 }: StatusScreenProps) => {
   // Create a separate state for the clock that updates every second
   const [clockTime, setClockTime] = useState(new Date());
@@ -122,8 +145,140 @@ const StatusScreen = ({
   const displayTime = currentTime || now.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
   const timeInMinutes = currentTimeMinutes || (now.getHours() * 60 + now.getMinutes());
   
+  // State for meetings
+  const [localMeetings, setLocalMeetings] = useState<Meeting[]>(meetings);
+  const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
+  
   // Get the current full date string
   const currentDateString = useMemo(() => getCurrentDateString(), []);
+  const todayDateString = useMemo(() => getTodayDateString(), []);
+  
+  // Check if meeting is today
+  const checkIfMeetingIsToday = (meeting: Meeting): boolean => {
+    try {
+      if (typeof meeting.date === 'string') {
+        if (meeting.date === todayDateString) {
+          return true;
+        }
+        
+        // Try comparing as date objects if string comparison fails
+        let meetingDate: Date;
+        if (meeting.date.includes('-')) {
+          // YYYY-MM-DD format
+          const [year, month, day] = meeting.date.split('-').map(Number);
+          meetingDate = new Date(year, month - 1, day);
+        } else if (meeting.date.includes('/')) {
+          // MM/DD/YYYY format
+          const [month, day, year] = meeting.date.split('/').map(Number);
+          meetingDate = new Date(year, month - 1, day);
+        } else {
+          // Try direct parsing
+          meetingDate = new Date(meeting.date);
+        }
+        
+        // Check if valid date and is today
+        if (!isNaN(meetingDate.getTime())) {
+          return isSameDay(new Date(), meetingDate);
+        }
+      } else if (meeting.date && typeof meeting.date === 'object' && 'getTime' in meeting.date) {
+        // If it's a Date object (checking for getTime method)
+        return isSameDay(new Date(), meeting.date);
+      } else if (meeting.date) {
+        // Last resort - try to parse whatever it is
+        const parsedDate = new Date(meeting.date as any);
+        if (!isNaN(parsedDate.getTime())) {
+          return isSameDay(new Date(), parsedDate);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking if meeting is today:', error, meeting);
+    }
+    
+    return false;
+  };
+  
+  // Detect meetings for today
+  const findMeetingsForToday = (meetingsToCheck: Meeting[]): { hasMeetingToday: boolean, todaysMeeting: Meeting | null } => {
+    for (const meeting of meetingsToCheck) {
+      if (checkIfMeetingIsToday(meeting)) {
+        console.log('Found meeting today:', meeting);
+        return { hasMeetingToday: true, todaysMeeting: meeting };
+      }
+    }
+    return { hasMeetingToday: false, todaysMeeting: null };
+  };
+
+  // State for meeting detection
+  const [hasMeetingToday, setHasMeetingToday] = useState(false);
+  const [todaysMeeting, setTodaysMeeting] = useState<Meeting | null>(null);
+
+  // Function to update meeting status - will be called every minute
+  const updateMeetingStatus = async (forceRefresh = false) => {
+    console.log('Checking for meetings today...');
+    const meetingsToCheck = meetings.length > 0 ? meetings : localMeetings;
+    
+    // If we need to refresh meetings from the server or if we don't have any
+    if (forceRefresh || meetingsToCheck.length === 0) {
+      setIsLoadingMeetings(true);
+      try {
+        const fetchedMeetings = await getAllMeetings();
+        console.log('Fetched meetings:', fetchedMeetings);
+        setLocalMeetings(fetchedMeetings);
+        
+        // Check the newly fetched meetings
+        const { hasMeetingToday: hasNewMeeting, todaysMeeting: newMeeting } = findMeetingsForToday(fetchedMeetings);
+        setHasMeetingToday(hasNewMeeting);
+        setTodaysMeeting(newMeeting);
+      } catch (error) {
+        console.error('Error loading meetings:', error);
+      } finally {
+        setIsLoadingMeetings(false);
+      }
+    } else {
+      // Use existing meetings
+      const { hasMeetingToday: hasExistingMeeting, todaysMeeting: existingMeeting } = findMeetingsForToday(meetingsToCheck);
+      setHasMeetingToday(hasExistingMeeting);
+      setTodaysMeeting(existingMeeting);
+    }
+  };
+  
+  // Initial check when component mounts
+  useEffect(() => {
+    updateMeetingStatus(true); // Force refresh on first load
+  }, [meetings]);
+  
+  // Set up periodic check for meetings (every minute)
+  useEffect(() => {
+    // Update meeting check with business logic time
+    const meetingCheckInterval = setInterval(() => {
+      updateMeetingStatus(); // Regular check every minute (uses cache)
+    }, 60000);
+    
+    // Also set up a daily refresh at midnight
+    const scheduleMidnightRefresh = () => {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      
+      const timeToMidnight = midnight.getTime() - now.getTime();
+      
+      // Set timeout for midnight refresh
+      const midnightTimeout = setTimeout(() => {
+        console.log('Midnight refresh of meetings');
+        updateMeetingStatus(true); // Force refresh at midnight
+        scheduleMidnightRefresh(); // Schedule next day's refresh
+      }, timeToMidnight);
+      
+      return midnightTimeout;
+    };
+    
+    const midnightTimeout = scheduleMidnightRefresh();
+    
+    return () => {
+      clearInterval(meetingCheckInterval);
+      clearTimeout(midnightTimeout);
+    };
+  }, []);
   
   // Get full day name
   const fullDayName = useMemo(() => fullDayNames[currentDay] || currentDay, [currentDay]);
@@ -369,6 +524,9 @@ const StatusScreen = ({
     return dateWithTime;
   };
 
+  // Calendar icon URL - this is a basic example, replace with your actual icon
+  const calendarIconUrl = "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22850.394%22%20height%3D%22850.394%22%20viewBox%3D%220%200%20850.394%20850.394%22%20overflow%3D%22visible%22%3E%3Cpath%20fill%3D%22%23ff001c%22%20d%3D%22M696.88%20111.76v119.33h-.22v-.44H154.9V111.76z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M561.22%20636.97h135.44v135.44H561.22zM561.22%20501.53h135.44v135.439H561.22zM561.22%20366.09h135.44v135.44H561.22z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M561.22%20231.09h135.44v135H561.22zM425.78%20636.97h135.44v135.44H425.78zM425.78%20501.53h135.44v135.439H425.78zM425.78%20366.09h135.44v135.44H425.78z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M425.78%20231.09h135.44v135H425.78zM290.34%20636.97h135.44v135.44H290.34zM290.34%20501.53h135.44v135.439H290.34zM290.34%20366.09h135.44v135.44H290.34z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M290.34%20231.09h135.44v135H290.34zM154.9%20636.97h135.44v135.44H154.9zM154.9%20501.53h135.44v135.439H154.9z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M154.9%20366.09h135.44v135.44H154.9z%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M154.9%20231.09h135.44v135H154.9z%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23231f20%22%3E%3Cpath%20stroke-width%3D%2221%22%20d%3D%22M154.9%20230.65h541.76v541.76H154.9V231.09M154.9%20636.97h541.76M154.9%20501.53h541.76M154.9%20366.09h541.76M561.22%20230.65v541.76M425.78%20230.65v541.76M290.34%20230.65v541.76%22%2F%3E%3Cpath%20stroke-width%3D%2221%22%20d%3D%22M154.9%20230.65V111.76h541.98v119.33H154.9z%22%2F%3E%3Cpath%20stroke-width%3D%2227.872%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20d%3D%22M176.79%2082.73v21.22M225.56%2082.73v21.22M275.5%2082.82v21.21M324.27%2082.98v21.21M374.21%2083.31v21.21M425.78%2083.46v21.21M474.56%2083.46v21.21M524.49%2083.54v21.21M573.26%2083.71v21.21M623.2%2084.04v21.21M675.32%2082.83v21.21%22%2F%3E%3C%2Fg%3E%3Cpath%20fill%3D%22none%22%20d%3D%22M0%200h850.394v850.394H0z%22%2F%3E%3C%2Fsvg%3E";
+
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 8 }}>
       <Box sx={{ textAlign: 'center', mb: 2 }}>
@@ -444,7 +602,7 @@ const StatusScreen = ({
           elevation={2} 
           sx={{ 
             mb: 2.0,
-            maxWidth: 440,
+            maxWidth: 540, // Increased width to accommodate calendar icon
             maxHeight: 150, 
             mx: 'auto',
             backgroundColor: statusColor.bg,
@@ -460,6 +618,7 @@ const StatusScreen = ({
             py: 2.25,
             px: 3.25
           }}>
+            {/* Status Symbol */}
             <Box sx={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -479,15 +638,62 @@ const StatusScreen = ({
               ) : (
                 <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
                   Ingen symbol
-                </Typography>
+                  </Typography>
               )}
             </Box>
             
             <Divider orientation="vertical" flexItem sx={{ mx: 1.75 }} />
             
+            {/* Status Message */}
             <Typography variant="h5" sx={{ flex: 1, textAlign: 'left', ml: 2.25, fontSize: '1.4rem' }}>
               {statusMessage}
             </Typography>
+            
+            {/* Add calendar icon if there's a meeting today */}
+            {hasMeetingToday && (
+              <>
+                <Divider orientation="vertical" flexItem sx={{ mx: 1.75 }} />
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  alignItems: 'center', 
+                  ml: 2
+                }}>
+                  <Badge 
+                    color="primary" 
+                    badgeContent=" " 
+                    variant="dot" 
+                    overlap="circular"
+                    anchorOrigin={{
+                      vertical: 'top',
+                      horizontal: 'right',
+                    }}
+                    sx={{ 
+                      '& .MuiBadge-badge': {
+                        width: 14,
+                        height: 14,
+                        borderRadius: '50%'
+                      },
+                      mb: 1
+                    }}
+                  >
+                    <Box 
+                      component="img" 
+                      src={calendarIconUrl}
+                      alt="Meeting Today" 
+                      sx={{ 
+                        height: 60, 
+                        maxWidth: 60,
+                        opacity: 0.9
+                      }}
+                    />
+                  </Badge>
+                  <Typography variant="caption" sx={{ fontWeight: 'medium', color: 'text.secondary' }}>
+                    Basmöte {todaysMeeting?.time || '10:00'}
+                  </Typography>
+                </Box>
+              </>
+            )}
           </CardContent>
         </Card>
 
