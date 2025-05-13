@@ -27,6 +27,7 @@ import { DaySchedule, TimeSlot, User, NextOpening } from '../types';
 import { timeToMinutes } from '../utils';
 import MulberrySymbols from './MulberrySymbolPicker';
 import { uploadSymbol, getSymbolUrl } from '../services/appwriteService';
+import ClockDayCard from '../components/ClockDayCard'; // Import our combined component
 
 interface Symbol {
   id: string;
@@ -83,6 +84,16 @@ const getCurrentDateString = (): string => {
   return `${day} ${month} ${year}`;
 };
 
+// Helper function to create a Date with specific time
+const createDateWithTime = (timeString: string): Date => {
+  const [hours, minutes] = timeString.split(':').map(num => parseInt(num, 10));
+  const dateWithTime = new Date();
+  dateWithTime.setHours(hours || 0);
+  dateWithTime.setMinutes(minutes || 0);
+  dateWithTime.setSeconds(0);
+  return dateWithTime;
+};
+
 const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
   currentDay,
   currentTime,
@@ -133,23 +144,32 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
     return scheduleData.find(day => day.day === currentDay);
   }, [scheduleData, currentDay]);
   
-  // Find day color but use a lighter version
+  // Find day color - add extra validation to ensure it works
   const dayColor = useMemo(() => {
     // Find the day in schedule data
     const daySchedule = scheduleData.find(day => day.day === currentDay);
+    let calculatedColor = 'rgba(25, 118, 210, 0.5)'; // Default fallback
+    
     if (daySchedule && daySchedule.color) {
-      // Use a lighter version by applying opacity via rgba
-      // This assumes the color is in a format we can extract values from
-      if (daySchedule.color.startsWith('#')) {
+      const originalColor = daySchedule.color;
+      // Apply opacity based on the format
+      if (originalColor.startsWith('#')) {
         // Add some transparency to the hex color
-        return daySchedule.color + '88'; // 88 is approx 50% opacity in hex
-      } else if (daySchedule.color.startsWith('rgb')) {
+        calculatedColor = originalColor + '88'; // 88 is approx 50% opacity in hex
+      } else if (originalColor.startsWith('rgb(')) {
         // Convert rgb to rgba with opacity
-        return daySchedule.color.replace('rgb', 'rgba').replace(')', ', 0.5)');
+        calculatedColor = originalColor.replace('rgb(', 'rgba(').replace(')', ', 0.5)');
+      } else {
+        calculatedColor = originalColor;
       }
-      return daySchedule.color;
+      
+      console.log(`ScheduleScreen: Original day color for ${currentDay}: ${originalColor}`);
+      console.log(`ScheduleScreen: Calculated day color with opacity: ${calculatedColor}`);
+    } else {
+      console.log(`ScheduleScreen: No color found for ${currentDay}, using default`);
     }
-    return 'rgba(25, 118, 210, 0.5)'; // Fallback to a light blue
+    
+    return calculatedColor;
   }, [currentDay, scheduleData]);
   
   // Clock-specific useEffect that updates every second for smooth animation
@@ -260,75 +280,37 @@ const ScheduleScreen: React.FC<ScheduleScreenProps> = ({
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 8 }}>
-      {/* Day and Clock Header */}
-      <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, mb: 3 }}>
-          {/* Day widget */}
-          <Paper 
-            elevation={2} 
-            sx={{ 
-              px: 3, 
-              py: 1.5, 
-              borderRadius: 2,
+      {/* Add ClockDayCard at the top of the page with explicit inline styles */}
+      <Box sx={{ textAlign: 'center', mb: 4, display: 'flex', justifyContent: 'center' }}>
+        <ClockDayCard 
+          time={clockTime}
+          day={currentDay}
+          date={currentDateString}
+          clockSize={140}
+          clockContainerSize={160}
+          dayCardMinWidth={150}
+          gap={4}
+          containerStyles={{ 
+            mb: 3, 
+            justifyContent: 'center' 
+          }}
+          // Skip dayCardColor prop since it might be causing issues
+          // Instead use direct style override
+          dayCardPaperProps={{
+            sx: {
               bgcolor: dayColor,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minWidth: 150
-            }}
-          >
-            <Typography 
-              variant="h4" 
-              sx={{ 
-                fontWeight: 'bold', 
-                color: 'rgba(0,0,0,0.85)',
-                mb: 0.5
-              }}
-            >
-              {fullDayName}
-            </Typography>
-            <Typography 
-              variant="h6" 
-              sx={{ color: 'rgba(0,0,0,0.7)' }}
-            >
-              {currentDateString}
-            </Typography>
-          </Paper>
-          
-          {/* Real-time clock component */}
-          <Box sx={{ 
-            p: 2, 
-            borderRadius: '50%', 
-            bgcolor: 'background.paper',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: 3,
-            width: 160,
-            height: 160
-          }}>
-            <Clock 
-              value={clockTime} // Use clockTime that updates every second
-              size={140}
-              renderNumbers={true}
-              hourHandLength={50}
-              hourHandWidth={4}
-              minuteHandLength={70}
-              minuteHandWidth={2}
-              secondHandLength={75}
-              secondHandWidth={1}
-            />
-          </Box>
-        </Box>
+              // Force the background color with !important if needed
+              '&.MuiPaper-root': {
+                backgroundColor: `${dayColor} !important`,
+              }
+            }
+          }}
+          clockContainerStyles={{ boxShadow: 3 }}
+        />
       </Box>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Schema
-        </Typography>
-        
-      </Box>
+      {/* Day and Clock Header */}
+      
 
       <Box sx={{ display: { xs: 'block', md: 'none' } }}>
         {sortedScheduleData.map((day) => (

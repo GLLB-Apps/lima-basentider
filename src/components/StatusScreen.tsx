@@ -13,6 +13,8 @@ import Clock from 'react-clock';
 import 'react-clock/dist/Clock.css'; // Import the styles
 import { DaySchedule, NextOpening } from '../types';
 import { timeToMinutes } from '../utils';
+import { dayColors } from '../data'; // Make sure this import is at the top
+import ClockDayCard from '../components/ClockDayCard'; // Import our new combined component
 
 interface Symbol {
   id: string;
@@ -68,6 +70,35 @@ const getCurrentDateString = (): string => {
   return `${day} ${month} ${year}`;
 };
 
+  // Helper function to ensure we have a color with proper opacity
+  const getProperDayColor = (day: string, scheduleData: any[]): string => {
+    const daySchedule = scheduleData.find(d => d.day === day);
+    let baseColor = null;
+    
+    // Try to get color from schedule data first
+    if (daySchedule && daySchedule.color) {
+      baseColor = daySchedule.color;
+    } 
+    // Then try default day colors
+    else if (dayColors && dayColors[day]) {
+      baseColor = dayColors[day];
+    }
+    
+    // If no color found, use default
+    if (!baseColor) {
+      return 'rgba(25, 118, 210, 0.5)';
+    }
+    
+    // Make sure the color has opacity
+    if (baseColor.startsWith('#')) {
+      return baseColor + '88'; // Add 50% opacity in hex format
+    } else if (baseColor.startsWith('rgb') && !baseColor.startsWith('rgba')) {
+      return baseColor.replace('rgb', 'rgba').replace(')', ', 0.5)');
+    }
+    
+    return baseColor;
+  };
+
 const StatusScreen = ({
   currentDay,
   currentTime,
@@ -96,6 +127,18 @@ const StatusScreen = ({
   
   // Get full day name
   const fullDayName = useMemo(() => fullDayNames[currentDay] || currentDay, [currentDay]);
+
+  // Get color for the current day (with opacity)
+  const dayColor = useMemo(() => 
+    getProperDayColor(currentDay, scheduleData),
+    [currentDay, scheduleData]
+  );
+
+  // Get color for the next opening day (with opacity)
+  const nextDayColor = useMemo(() => 
+    getProperDayColor(nextOpening.day, scheduleData),
+    [nextOpening.day, scheduleData]
+  );
   
   // Clock-specific useEffect that updates every second for smooth animation
   useEffect(() => {
@@ -316,87 +359,32 @@ const StatusScreen = ({
     return currentSymbol ? `${currentSymbol.id}-${currentSymbol.image_url}` : 'no-symbol';
   }, [currentSymbol]);
 
-  // Find day color but use a lighter version
-  const dayColor = useMemo(() => {
-    // Find the day in schedule data
-    const daySchedule = scheduleData.find(day => day.day === currentDay);
-    if (daySchedule && daySchedule.color) {
-      // Use a lighter version by applying opacity via rgba
-      // This assumes the color is in a format we can extract values from
-      if (daySchedule.color.startsWith('#')) {
-        // Add some transparency to the hex color
-        return daySchedule.color + '88'; // 88 is approx 50% opacity in hex
-      } else if (daySchedule.color.startsWith('rgb')) {
-        // Convert rgb to rgba with opacity
-        return daySchedule.color.replace('rgb', 'rgba').replace(')', ', 0.5)');
-      }
-      return daySchedule.color;
-    }
-    return 'rgba(25, 118, 210, 0.5)'; // Fallback to a light blue
-  }, [currentDay, scheduleData]);
+  // Helper function to create a Date with specific time
+  const createDateWithTime = (timeString: string): Date => {
+    const [hours, minutes] = timeString.split(':').map(num => parseInt(num, 10));
+    const dateWithTime = new Date();
+    dateWithTime.setHours(hours || 0);
+    dateWithTime.setMinutes(minutes || 0);
+    dateWithTime.setSeconds(0);
+    return dateWithTime;
+  };
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 8 }}>
       <Box sx={{ textAlign: 'center', mb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 4, mb: 3 }}>
-          {/* Day widget replacing the Chip */}
-          <Paper 
-            elevation={2} 
-            sx={{ 
-              px: 3, 
-              py: 1.5, 
-              borderRadius: 2,
-              bgcolor: dayColor,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minWidth: 150
-            }}
-          >
-            <Typography 
-              variant="h4" 
-              sx={{ 
-                fontWeight: 'bold', 
-                color: 'rgba(0,0,0,0.85)',
-                mb: 0.5
-              }}
-            >
-              {fullDayName}
-            </Typography>
-            <Typography 
-              variant="h6" 
-              sx={{ color: 'rgba(0,0,0,0.7)' }}
-            >
-              {currentDateString}
-            </Typography>
-          </Paper>
-          
-          {/* Real-time clock component */}
-          <Box sx={{ 
-            p: 2, 
-            borderRadius: '50%', 
-            bgcolor: 'background.paper',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: 3,
-            width: 160,
-            height: 160
-          }}>
-            <Clock 
-              value={clockTime} // Use clockTime that updates every second
-              size={140}
-              renderNumbers={true}
-              hourHandLength={50}
-              hourHandWidth={4}
-              minuteHandLength={70}
-              minuteHandWidth={2}
-              secondHandLength={75}
-              secondHandWidth={1}
-            />
-          </Box>
-        </Box>
+        {/* KEEP: Top ClockDayCard component */}
+        <ClockDayCard 
+          time={clockTime}
+          day={currentDay}
+          date={currentDateString}
+          dayCardColor={dayColor} // Pass the explicit color
+          clockSize={140}
+          clockContainerSize={160}
+          dayCardMinWidth={150}
+          gap={4}
+          containerStyles={{ mb: 3, justifyContent: 'center' }}
+          clockContainerStyles={{ boxShadow: 3 }}
+        />
       </Box>
 
       <Paper 
@@ -519,51 +507,9 @@ const StatusScreen = ({
                 Öppnar nästa gång:
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 3 }}>
-                {/* DayCard widget for next opening day */}
-                <Paper 
-                  elevation={2} 
-                  sx={{ 
-                    px: 2.75, 
-                    py: 1.25, 
-                    borderRadius: 2,
-                    bgcolor: (() => {
-                      // Find the next opening day in schedule data
-                      const daySchedule = scheduleData.find(day => day.day === nextOpening.day);
-                      if (daySchedule && daySchedule.color) {
-                        // Use a lighter version by applying opacity via rgba
-                        if (daySchedule.color.startsWith('#')) {
-                          return daySchedule.color + '88'; // 50% opacity in hex
-                        } else if (daySchedule.color.startsWith('rgb')) {
-                          return daySchedule.color.replace('rgb', 'rgba').replace(')', ', 0.5)');
-                        }
-                        return daySchedule.color;
-                      }
-                      return 'rgba(25, 118, 210, 0.5)'; // Fallback to a light blue
-                    })(),
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 130
-                  }}
-                >
-                  <Typography 
-                    variant="h6" 
-                    sx={{ 
-                      fontWeight: 'bold', 
-                      fontSize: '1.2rem',
-                      color: 'rgba(0,0,0,0.85)'
-                    }}
-                  >
-                    {fullDayNames[nextOpening.day] || nextOpening.day}
-                  </Typography>
-                </Paper>
-
-                <Typography variant="h6" sx={{ fontWeight: 'medium' }}>kl</Typography>
-
-                {/* Static clock for next opening time - INCREASED SIZE */}
+                {/* MODIFIED: Remove daycard, keep only clock for next opening */}
                 <Box sx={{ 
-                  p: 1.5, 
+                  p: 2, 
                   borderRadius: '50%', 
                   bgcolor: 'background.paper',
                   display: 'flex',
@@ -574,28 +520,30 @@ const StatusScreen = ({
                   height: 140
                 }}>
                   <Clock 
-                    value={(() => {
-                      // Create a Date with the opening time
-                      const [hours, minutes] = nextOpening.time.split(':').map(num => parseInt(num, 10));
-                      const dateWithTime = new Date();
-                      dateWithTime.setHours(hours || 0);
-                      dateWithTime.setMinutes(minutes || 0);
-                      dateWithTime.setSeconds(0);
-                      return dateWithTime;
-                    })()}
+                    value={createDateWithTime(nextOpening.time)}
                     size={120}
                     renderNumbers={true}
                     hourHandWidth={4.5}
                     minuteHandWidth={3}
-                    renderSecondHand={false}
                     hourMarksLength={12}
                     hourMarksWidth={2.5}
                     minuteMarksLength={6}
-                    renderHourMarks
                     renderMinuteMarks={false}
                     hourHandLength={55}
                     minuteHandLength={80}
+                    renderSecondHand={false}
+                    renderHourMarks={true}
                   />
+                </Box>
+                
+                {/* Add text for opening day */}
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                    {fullDayNames[nextOpening.day] || nextOpening.day}
+                  </Typography>
+                  <Typography variant="body1">
+                    {nextOpening.time}
+                  </Typography>
                 </Box>
               </Box>
             </Box>
@@ -634,7 +582,7 @@ const StatusScreen = ({
               }}
             />
             
-            {/* Clock representations for start and end times */}
+            {/* MODIFIED: Keep analog clocks but remove daycards */}
             <Box sx={{ 
               display: 'flex', 
               justifyContent: 'space-between', 
@@ -644,45 +592,38 @@ const StatusScreen = ({
             }}>
               {/* Start time clock */}
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 'medium', fontSize: '1.1rem', mb: 1.5 }}>
-                  Öppettid
-                </Typography>
                 <Box sx={{ 
-                  p: 1.5, 
+                  p: 2, 
                   borderRadius: '50%', 
                   bgcolor: 'background.paper',
-                  display: 'inline-flex',
+                  display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   boxShadow: 2,
                   width: 140,
                   height: 140,
-                  mb: 1.5
+                  mb: 1.5,
+                  mx: 'auto'
                 }}>
                   <Clock 
-                    value={(() => {
-                      // Create a Date with the opening time
-                      const [hours, minutes] = currentTimeSlot.start.split(':').map(num => parseInt(num, 10));
-                      const dateWithTime = new Date();
-                      dateWithTime.setHours(hours || 0);
-                      dateWithTime.setMinutes(minutes || 0);
-                      dateWithTime.setSeconds(0);
-                      return dateWithTime;
-                    })()}
+                    value={createDateWithTime(currentTimeSlot.start)}
                     size={120}
                     renderNumbers={true}
                     hourHandWidth={4.5}
                     minuteHandWidth={3}
-                    renderSecondHand={false}
                     hourMarksLength={12}
                     hourMarksWidth={2.5}
                     minuteMarksLength={6}
-                    renderHourMarks
                     renderMinuteMarks={false}
                     hourHandLength={55}
                     minuteHandLength={80}
+                    renderSecondHand={false}
+                    renderHourMarks={true}
                   />
                 </Box>
+                <Typography variant="h6" sx={{ fontWeight: 'medium', fontSize: '1.1rem', mb: 1 }}>
+                  Öppettid
+                </Typography>
                 <Typography variant="body1" sx={{ color: 'text.secondary', fontWeight: 'medium' }}>
                   {currentTimeSlot.start}
                 </Typography>
@@ -690,45 +631,38 @@ const StatusScreen = ({
               
               {/* End time clock */}
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6" sx={{ fontWeight: 'medium', fontSize: '1.1rem', mb: 1.5 }}>
-                  Stängningstid
-                </Typography>
                 <Box sx={{ 
-                  p: 1.5, 
+                  p: 2, 
                   borderRadius: '50%', 
                   bgcolor: 'background.paper',
-                  display: 'inline-flex',
+                  display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   boxShadow: 2,
                   width: 140,
                   height: 140,
-                  mb: 1.5
+                  mb: 1.5,
+                  mx: 'auto'
                 }}>
                   <Clock 
-                    value={(() => {
-                      // Create a Date with the closing time
-                      const [hours, minutes] = currentTimeSlot.end.split(':').map(num => parseInt(num, 10));
-                      const dateWithTime = new Date();
-                      dateWithTime.setHours(hours || 0);
-                      dateWithTime.setMinutes(minutes || 0);
-                      dateWithTime.setSeconds(0);
-                      return dateWithTime;
-                    })()}
+                    value={createDateWithTime(currentTimeSlot.end)}
                     size={120}
                     renderNumbers={true}
                     hourHandWidth={4.5}
                     minuteHandWidth={3}
-                    renderSecondHand={false}
                     hourMarksLength={12}
                     hourMarksWidth={2.5}
                     minuteMarksLength={6}
-                    renderHourMarks
                     renderMinuteMarks={false}
                     hourHandLength={55}
                     minuteHandLength={80}
+                    renderSecondHand={false}
+                    renderHourMarks={true}
                   />
                 </Box>
+                <Typography variant="h6" sx={{ fontWeight: 'medium', fontSize: '1.1rem', mb: 1 }}>
+                  Stängningstid
+                </Typography>
                 <Typography variant="body1" sx={{ color: 'text.secondary', fontWeight: 'medium' }}>
                   {currentTimeSlot.end}
                 </Typography>
@@ -741,7 +675,7 @@ const StatusScreen = ({
         {!isOpen && !manualOverride && nextOpening.minutesUntil > 0 && (
           <Box sx={{ mt: 2.5, mb: 0.75, width: '100%', maxWidth: 500, mx: 'auto' }}>
             <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0.75 }}>
-              <Typography variant="h6" sx={{ fontWeight: 'medium', color: 'text.secondary', fontSize: '1.1rem' }}>
+              <Typography variant="body1" sx={{ fontWeight: 'medium', color: 'text.secondary' }}>
                 {timeUntilOpenText}
               </Typography>
             </Box>

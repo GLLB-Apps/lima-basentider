@@ -4,65 +4,16 @@ import {
   ListItemIcon, Divider, Button, TextField, Dialog, 
   DialogTitle, DialogContent, DialogActions, Chip, Tabs, Tab,
   Fab, IconButton, CircularProgress, Badge, useMediaQuery, useTheme,
-  Container
+  Container, Snackbar, Alert
 } from '@mui/material';
 import { Plus, Edit, Trash, Gavel, Clock as ClockIcon, Calendar as CalendarIcon, Inbox, SquareCheckBig } from 'lucide-react';
-import Clock from 'react-clock'; // Make sure to import the Clock component
-import 'react-clock/dist/Clock.css'; // Import the styles
-import { User as UserType, InboxMessage } from '../types';
+import ClockDayCard, { fullDayNames, dayColors } from '../components/ClockDayCard'; // Import the ClockDayCard component
+import { User as UserType, InboxMessage, Meeting } from '../types';
 import { 
   getInboxMessages, createInboxMessage, 
-  markMessageAsRead, deleteInboxMessage 
+  markMessageAsRead, deleteInboxMessage,
+  getAllMeetings, createMeeting, updateMeeting, deleteMeeting as deleteMeetingService
 } from '../services/appwriteService';
-
-// Define simplified Meeting interface
-interface Meeting {
-  id: string;
-  title: string;
-  date: string;
-  time: string;
-  description: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
-}
-
-// Mock data for meetings
-const mockMeetings: Meeting[] = [
-  {
-    id: '1',
-    title: 'Basmöte',
-    date: '2025-05-10',
-    time: '13:00',
-    description: '',
-    status: 'scheduled'
-  },
-  {
-    id: '2',
-    title: 'Basmöte',
-    date: '2025-05-15',
-    time: '10:00',
-    description: '',
-    status: 'scheduled'
-  },
-  {
-    id: '3',
-    title: 'Basmöte',
-    date: '2025-04-30',
-    time: '09:00',
-    description: '',
-    status: 'scheduled'
-  }
-];
-
-// Map short day names to full Swedish day names
-const fullDayNames: Record<string, string> = {
-  'Mån': 'Måndag',
-  'Tis': 'Tisdag',
-  'Ons': 'Onsdag',
-  'Tors': 'Torsdag',
-  'Fre': 'Fredag',
-  'Lör': 'Lördag',
-  'Sön': 'Söndag'
-};
 
 // Helper to get day of week from date string (YYYY-MM-DD)
 const getDayOfWeek = (dateString: string): string => {
@@ -120,6 +71,7 @@ interface MeetingsScreenProps {
   currentUser: UserType | null;
 }
 
+// Fix to make the component a proper React Functional Component
 const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser }) => {
   // Use theme and media queries for responsive design
   const theme = useTheme();
@@ -138,10 +90,12 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   const [activeTab, setActiveTab] = useState(0);
 
   // Meetings state
-  const [meetings, setMeetings] = useState<Meeting[]>(mockMeetings);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [meetingDialogOpen, setMeetingDialogOpen] = useState(false);
   const [isEditingMeeting, setIsEditingMeeting] = useState(false);
+  const [isLoadingMeetings, setIsLoadingMeetings] = useState(false);
+  const [isSavingMeeting, setIsSavingMeeting] = useState(false);
   
   // Inbox state
   const [inboxMessages, setInboxMessages] = useState<InboxMessage[]>([]);
@@ -150,10 +104,16 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   
+  // Snackbar notification state
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error' | 'info' | 'warning'
+  });
+  
   // Simplified Meeting Form state
   const [meetingFormData, setMeetingFormData] = useState({
-    date: '',
-    time: ''
+    date: ''
   });
   
   // Inbox Form state
@@ -171,6 +131,11 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     
     // Clean up the interval when component unmounts
     return () => clearInterval(clockInterval);
+  }, []);
+
+  // Load meetings when the component mounts
+  useEffect(() => {
+    loadMeetings();
   }, []);
 
   // Load inbox messages when the component mounts or when logged in
@@ -192,6 +157,22 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     const count = inboxMessages.filter(message => !message.isRead).length;
     setUnreadCount(count);
   }, [inboxMessages]);
+
+  // Load meetings from the API
+  const loadMeetings = async () => {
+    if (!isLoadingMeetings) {
+      setIsLoadingMeetings(true);
+      try {
+        const fetchedMeetings = await getAllMeetings();
+        setMeetings(fetchedMeetings);
+      } catch (error) {
+        console.error('Error loading meetings:', error);
+        showSnackbar('Kunde inte hämta möten', 'error');
+      } finally {
+        setIsLoadingMeetings(false);
+      }
+    }
+  };
   
   // Load inbox messages from the API
   const loadInboxMessages = async () => {
@@ -202,6 +183,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
         setInboxMessages(messages);
       } catch (error) {
         console.error('Error loading inbox messages:', error);
+        showSnackbar('Kunde inte hämta meddelanden', 'error');
       } finally {
         setIsLoadingInbox(false);
       }
@@ -213,20 +195,39 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     setActiveTab(newValue);
   };
 
+  // Snackbar helper
+  const showSnackbar = (message: string, severity: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setSnackbar({
+      open: true,
+      message,
+      severity
+    });
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({
+      ...snackbar,
+      open: false
+    });
+  };
+
   // Meeting functions
   const handleOpenMeetingDialog = (meeting?: Meeting) => {
+    if (!isLoggedIn) {
+      showSnackbar('Du måste vara inloggad för att hantera möten', 'info');
+      return;
+    }
+    
     if (meeting) {
       setSelectedMeeting(meeting);
       setMeetingFormData({
-        date: meeting.date,
-        time: meeting.time
+        date: meeting.date
       });
       setIsEditingMeeting(true);
     } else {
       setSelectedMeeting(null);
       setMeetingFormData({
-        date: getTodayDate(),
-        time: '10:00'
+        date: getTodayDate()
       });
       setIsEditingMeeting(false);
     }
@@ -242,51 +243,90 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     if (name) {
       setMeetingFormData({
         ...meetingFormData,
-        [name]: value
+        [name]: value as string
       });
     }
   };
   
-  const handleSaveMeeting = () => {
-    // Validate form data
-    if (!meetingFormData.date || !meetingFormData.time) {
+  const handleSaveMeeting = async () => {
+    // Only allow logged-in users to save meetings
+    if (!isLoggedIn) {
+      showSnackbar('Du måste vara inloggad för att hantera möten', 'error');
       return;
     }
     
-    if (isEditingMeeting && selectedMeeting) {
-      // Update existing meeting
-      const updatedMeetings = meetings.map(meeting => 
-        meeting.id === selectedMeeting.id 
-          ? { 
-              ...meeting, 
-              date: meetingFormData.date,
-              time: meetingFormData.time
-            }
-          : meeting
-      );
-      setMeetings(updatedMeetings);
-    } else {
-      // Create new meeting with a temp ID
-      const newId = Date.now().toString();
-      const newMeeting: Meeting = {
-        id: newId,
-        title: 'Basmöte', // Fixed title
-        date: meetingFormData.date,
-        time: meetingFormData.time,
-        description: '', // Empty description
-        status: 'scheduled' // Default status
-      };
-      setMeetings([...meetings, newMeeting]);
+    // Validate form data
+    if (!meetingFormData.date) {
+      return;
     }
     
-    handleCloseMeetingDialog();
+    setIsSavingMeeting(true);
+    
+    try {
+      if (isEditingMeeting && selectedMeeting) {
+        // Update existing meeting
+        const success = await updateMeeting(selectedMeeting.id, meetingFormData.date);
+        
+        if (success) {
+          // Update in local state
+          const updatedMeetings = meetings.map(meeting => 
+            meeting.id === selectedMeeting.id 
+              ? { 
+                  ...meeting, 
+                  date: meetingFormData.date
+                }
+              : meeting
+          );
+          setMeetings(updatedMeetings);
+          showSnackbar('Mötet har uppdaterats');
+        } else {
+          throw new Error('Kunde inte uppdatera mötet');
+        }
+      } else {
+        // Create new meeting
+        const newMeeting = await createMeeting(meetingFormData.date);
+        
+        if (newMeeting) {
+          // Add to local state
+          setMeetings([...meetings, newMeeting]);
+          showSnackbar('Nytt möte har skapats');
+        } else {
+          throw new Error('Kunde inte skapa nytt möte');
+        }
+      }
+      
+      handleCloseMeetingDialog();
+    } catch (error) {
+      console.error('Error saving meeting:', error);
+      showSnackbar('Ett fel uppstod vid sparande av mötet', 'error');
+    } finally {
+      setIsSavingMeeting(false);
+    }
   };
   
-  const handleDeleteMeeting = (id: string) => {
-    // Delete meeting
-    setMeetings(meetings.filter(meeting => meeting.id !== id));
+  const handleDeleteMeeting = async (id: string) => {
+    // Only allow logged-in users to delete meetings
+    if (!isLoggedIn) {
+      showSnackbar('Du måste vara inloggad för att hantera möten', 'error');
+      return;
+    }
+    
+    try {
+      const success = await deleteMeetingService(id);
+      
+      if (success) {
+        // Remove from local state
+        setMeetings(meetings.filter(meeting => meeting.id !== id));
+        showSnackbar('Mötet har tagits bort');
+      } else {
+        throw new Error('Kunde inte ta bort mötet');
+      }
+    } catch (error) {
+      console.error('Error deleting meeting:', error);
+      showSnackbar('Ett fel uppstod vid borttagning av mötet', 'error');
+    }
   };
-  
+
   // Inbox functions
   const handleOpenInboxDialog = () => {
     setInboxFormData({
@@ -305,7 +345,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     if (name) {
       setInboxFormData({
         ...inboxFormData,
-        [name]: value
+        [name]: value as string
       });
     }
   };
@@ -331,9 +371,11 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
           setInboxMessages([newMessage, ...inboxMessages]);
         }
         handleCloseInboxDialog();
+        showSnackbar('Ditt meddelande har skickats', 'success');
       }
     } catch (error) {
       console.error('Error submitting message:', error);
+      showSnackbar('Ett fel uppstod vid skickande av meddelandet', 'error');
     } finally {
       setIsSubmittingMessage(false);
     }
@@ -350,9 +392,11 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
             ? { ...message, isRead: true } 
             : message
         ));
+        showSnackbar('Meddelandet har markerats som läst');
       }
     } catch (error) {
       console.error('Error marking message as read:', error);
+      showSnackbar('Ett fel uppstod vid markering av meddelandet', 'error');
     }
   };
   
@@ -363,9 +407,11 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       if (success) {
         // Remove message from state
         setInboxMessages(inboxMessages.filter(message => message.id !== id));
+        showSnackbar('Meddelandet har tagits bort');
       }
     } catch (error) {
       console.error('Error deleting message:', error);
+      showSnackbar('Ett fel uppstod vid borttagning av meddelandet', 'error');
     }
   };
   
@@ -381,26 +427,36 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   // Format date to Swedish format (DD/MM/YYYY)
   const formatDate = (dateString: string): string => {
     const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
+    
+    // Remove leading zero from day
+    const dayNum = parseInt(day, 10);
+    
+    // Get month name in Swedish
+    const monthNames = ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 
+                       'juli', 'augusti', 'september', 'oktober', 'november', 'december'];
+    const monthIndex = parseInt(month, 10) - 1; // Convert to 0-based index
+    const monthName = monthNames[monthIndex];
+    
+    return `${dayNum} ${monthName} ${year}`;
   };
-  
-  // Helper to convert time string to Date object
-  const timeStringToDate = (timeStr: string): Date => {
-    const [hours, minutes] = timeStr.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours);
-    date.setMinutes(minutes);
-    date.setSeconds(0);
-    return date;
-  };
-  
+
   // Render the meetings tab content
   const renderMeetingsTab = () => {
     return (
       <Box sx={{ position: 'relative', minHeight: '400px' }}>
         {/* Header with add button for logged in users */}
         {isLoggedIn && !isMobile && (
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+            <Button 
+              variant="outlined"
+              onClick={loadMeetings}
+              disabled={isLoadingMeetings}
+              startIcon={isLoadingMeetings ? <CircularProgress size={16} /> : null}
+              size={isMobile ? "small" : "medium"}
+            >
+              {isLoadingMeetings ? 'Uppdaterar...' : 'Uppdatera'}
+            </Button>
+            
             <Button 
               variant="contained" 
               startIcon={<Plus size={16} />}
@@ -412,272 +468,224 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
           </Box>
         )}
         
-        {/* Custom meeting list for all users */}
-        <Paper elevation={2} sx={{ overflow: 'hidden' }}>
-          <List sx={{ p: 0 }}>
-            {meetings.length === 0 ? (
-              <ListItem>
-                <ListItemText primary="Inga möten schemalagda" />
-              </ListItem>
-            ) : (
-              meetings.map((meeting, index) => {
-                const dayOfWeek = getDayOfWeek(meeting.date);
-                // Apply the same color calculation as used for the header
-                const dayColor = getDayColor(dayOfWeek) + '88';
-                const fullDayName = fullDayNames[dayOfWeek] || dayOfWeek;
-                
-                // Create a Date object for the clock
-                const meetingTime = timeStringToDate(meeting.time);
-                
-                // Responsive layout based on screen size
-                return (
-                  <React.Fragment key={meeting.id}>
-                    {index > 0 && <Divider />}
-                    
-                    {/* Mobile layout - Updated with requested order: Icon, Title, Day card, Clock */}
-                    {isMobile ? (
-                      <ListItem 
-                        sx={{ 
-                          py: 2,
-                          px: 2,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 1.5
-                        }}
-                      >
-                        {/* Calendar Mulberry Symbol Icon */}
-                        <Box 
-                          component="div"
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flex: '0 0 auto'
-                          }}
-                        >
-                          <CalendarIcon size={36} color="#1976D2" />
-                        </Box>
-                        
-                        {/* Meeting Title */}
-                        <Box sx={{ 
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          flex: '1 1 auto'
-                        }}>
-                          <Typography variant="h6" fontWeight="medium" noWrap sx={{ mr: 1, maxWidth: '110px' }}>
-                            {meeting.title}
-                          </Typography>
-                        </Box>
-                        
-                        {/* Day Card - Using consistent styling */}
-                        <Paper 
-                          elevation={1} 
+        {/* Meetings list */}
+        {isLoadingMeetings && meetings.length === 0 ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Paper elevation={2} sx={{ overflow: 'hidden' }}>
+            <List sx={{ p: 0 }}>
+              {meetings.length === 0 ? (
+                <ListItem>
+                  <ListItemText primary="Inga möten schemalagda" />
+                </ListItem>
+              ) : (
+                meetings.map((meeting, index) => {
+                  const dayOfWeek = getDayOfWeek(meeting.date);
+                  // Apply the same color calculation as used for the header
+                  const dayColor = getDayColor(dayOfWeek) + '88';
+                  const fullDayName = fullDayNames[dayOfWeek] || dayOfWeek;
+                  
+                  // Responsive layout based on screen size
+                  return (
+                    <React.Fragment key={meeting.id}>
+                      {index > 0 && <Divider />}
+                      
+                      {/* Mobile layout */}
+                      {isMobile ? (
+                        <ListItem 
                           sx={{ 
-                            px: 1.5, 
-                            py: 0.75, 
-                            borderRadius: 2,
-                            bgcolor: dayColor,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            minWidth: 70,
-                            flex: '0 0 auto'
-                          }}
-                        >
-                          <Typography 
-                            variant="body2" 
-                            sx={{ 
-                              fontWeight: 'bold', 
-                              color: 'rgba(0,0,0,0.85)',
-                              mb: 0.25,
-                              fontSize: '0.8rem'
-                            }}
-                          >
-                            {fullDayName}
-                          </Typography>
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              color: 'rgba(0,0,0,0.7)',
-                              fontSize: '0.65rem'
-                            }}
-                          >
-                            {formatDate(meeting.date)}
-                          </Typography>
-                        </Paper>
-                        
-                        {/* Clock and time */}
-                        <Box sx={{ 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          flex: '0 0 auto'
-                        }}>
-                          <Clock 
-                            value={meetingTime}
-                            size={65}
-                            renderNumbers={false}
-                            hourHandWidth={2.5}
-                            minuteHandWidth={1.5}
-                            renderSecondHand={false}
-                            hourMarksLength={8}
-                            hourMarksWidth={1.5}
-                            minuteMarksLength={3}
-                            minuteMarksWidth={0.5}
-                            renderHourMarks
-                            renderMinuteMarks={false}
-                            hourHandLength={30}
-                            minuteHandLength={45}
-                          />
-                          <Typography variant="caption" fontWeight="medium" sx={{ mt: 0.5 }}>
-                            {meeting.time}
-                          </Typography>
-                        </Box>
-                        
-                        {/* Delete icon only for logged in users */}
-                        {isLoggedIn && (
-                          <IconButton 
-                            edge="end" 
-                            color="error" 
-                            onClick={() => handleDeleteMeeting(meeting.id)}
-                            sx={{ 
-                              ml: 0.5,
-                              p: 0.75
-                            }}
-                            size="small"
-                          >
-                            <Trash size={16} />
-                          </IconButton>
-                        )}
-                      </ListItem>
-                    ) : (
-                      /* Desktop layout - with consistent color styling */
-                      <ListItem 
-                        sx={{ 
-                          py: 3,
-                          px: 3,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 2.5
-                        }}
-                      >
-                        {/* Calendar Mulberry Symbol Icon */}
-                        <Box 
-                          component="div"
-                          sx={{
-                            minWidth: 70,
-                            minHeight: 70,
+                            py: 2,
+                            px: 2,
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            flex: '0 0 auto'
+                            gap: 1.5
                           }}
                         >
-                          <CalendarIcon size={56} color="#1976D2" />
-                        </Box>
-                        
-                        {/* Day Card - Using consistent styling */}
-                        <Paper 
-                          elevation={1} 
-                          sx={{ 
-                            px: 2.5, 
-                            py: 1.25, 
-                            borderRadius: 2,
-                            bgcolor: dayColor,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            minWidth: 100,
-                            flex: '0 0 auto'
-                          }}
-                        >
-                          <Typography 
-                            variant="h6" 
-                            sx={{ 
-                              fontWeight: 'bold', 
-                              color: 'rgba(0,0,0,0.85)',
-                              mb: 0.5
+                          {/* Calendar Mulberry Symbol Icon */}
+                          <Box 
+                            component="div"
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flex: '0 0 auto'
                             }}
                           >
-                            {fullDayName}
-                          </Typography>
-                          <Typography 
-                            variant="body2" 
-                            sx={{ color: 'rgba(0,0,0,0.7)' }}
-                          >
-                            {formatDate(meeting.date)}
-                          </Typography>
-                        </Paper>
-                        
-                        {/* Meeting title */}
-                        <Box sx={{ 
-                          flexGrow: 1,
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}>
-                          <Typography variant="h5" fontWeight="medium">
-                            {meeting.title}
-                          </Typography>
-                        </Box>
-                        
-                        {/* Time with Clock */}
-                        <Box sx={{ 
-                          display: 'flex', 
-                          flexDirection: 'column', 
-                          alignItems: 'center',
-                          flex: '0 0 auto'
-                        }}>
-                          <Clock 
-                            value={meetingTime}
-                            size={100}
-                            renderNumbers={true}
-                            hourHandWidth={3}
-                            minuteHandWidth={2}
-                            renderSecondHand={false}
-                            hourMarksLength={10}
-                            hourMarksWidth={2}
-                            minuteMarksLength={5}
-                            minuteMarksWidth={1}
-                            renderHourMarks
-                            renderMinuteMarks={false}
-                            hourHandLength={50}
-                            minuteHandLength={70}
-                          />
+                            <CalendarIcon size={36} color="#1976D2" />
+                          </Box>
                           
-                          <Typography variant="body2" fontWeight="medium" sx={{ mt: 1 }}>
-                            {meeting.time}
-                          </Typography>
-                        </Box>
-                        
-                        {/* Delete icon only for logged in users */}
-                        {isLoggedIn && (
-                          <IconButton 
-                            edge="end" 
-                            color="error" 
-                            onClick={() => handleDeleteMeeting(meeting.id)}
-                            sx={{ ml: 1 }}
+                          {/* Meeting Title */}
+                          <Box sx={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flex: '1 1 auto'
+                          }}>
+                            <Typography variant="h6" fontWeight="medium" noWrap sx={{ mr: 1, maxWidth: '110px' }}>
+                              Basmöte
+                            </Typography>
+                          </Box>
+                          
+                          {/* Day Card - Using consistent styling */}
+                          <Paper 
+                            elevation={1} 
+                            sx={{ 
+                              px: 1.5, 
+                              py: 0.75, 
+                              borderRadius: 2,
+                              bgcolor: dayColor,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: 70,
+                              flex: '0 0 auto'
+                            }}
                           >
-                            <Trash size={20} />
-                          </IconButton>
-                        )}
-                      </ListItem>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </List>
-        </Paper>
+                            <Typography 
+                              variant="body2" 
+                              sx={{ 
+                                fontWeight: 'bold', 
+                                color: 'rgba(0,0,0,0.85)',
+                                mb: 0.25,
+                                fontSize: '0.8rem'
+                              }}
+                            >
+                              {fullDayName}
+                            </Typography>
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                color: 'rgba(0,0,0,0.7)',
+                                fontSize: '0.65rem'
+                              }}
+                            >
+                              {formatDate(meeting.date)}
+                            </Typography>
+                          </Paper>
+                          
+                          {/* Edit/Delete icons only for logged in users */}
+                          {isLoggedIn && (
+                            <IconButton 
+                              edge="end" 
+                              color="error" 
+                              onClick={() => handleDeleteMeeting(meeting.id)}
+                              sx={{ 
+                                ml: 0.5,
+                                p: 0.75
+                              }}
+                              size="small"
+                            >
+                              <Trash size={16} />
+                            </IconButton>
+                          )}
+                        </ListItem>
+                      ) : (
+                        /* Desktop layout */
+                        <ListItem 
+                          sx={{ 
+                            py: 3,
+                            px: 3,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2.5
+                          }}
+                        >
+                          {/* Calendar Mulberry Symbol Icon */}
+                          <Box 
+                            component="div"
+                            sx={{
+                              minWidth: 70,
+                              minHeight: 70,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flex: '0 0 auto'
+                            }}
+                          >
+                            <CalendarIcon size={56} color="#1976D2" />
+                          </Box>
+                          
+                          {/* Day Card - Using consistent styling */}
+                          <Paper 
+                            elevation={1} 
+                            sx={{ 
+                              px: 2.5, 
+                              py: 1.25, 
+                              borderRadius: 2,
+                              bgcolor: dayColor,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minWidth: 100,
+                              flex: '0 0 auto'
+                            }}
+                          >
+                            <Typography 
+                              variant="h6" 
+                              sx={{ 
+                                fontWeight: 'bold', 
+                                color: 'rgba(0,0,0,0.85)',
+                                mb: 0.5
+                              }}
+                            >
+                              {fullDayName}
+                            </Typography>
+                            <Typography 
+                              variant="body2" 
+                              sx={{ color: 'rgba(0,0,0,0.7)' }}
+                            >
+                              {formatDate(meeting.date)}
+                            </Typography>
+                          </Paper>
+                          
+                          {/* Meeting title */}
+                          <Box sx={{ 
+                            flexGrow: 1,
+                            display: 'flex',
+                            alignItems: 'center'
+                          }}>
+                            <Typography variant="h5" fontWeight="medium">
+                              Basmöte
+                            </Typography>
+                          </Box>
+                          
+                          {/* Icons only for logged in users */}
+                          {isLoggedIn && (
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <IconButton 
+                                color="primary" 
+                                onClick={() => handleOpenMeetingDialog(meeting)}
+                              >
+                                <Edit size={20} />
+                              </IconButton>
+                              <IconButton 
+                                color="error" 
+                                onClick={() => handleDeleteMeeting(meeting.id)}
+                              >
+                                <Trash size={20} />
+                              </IconButton>
+                            </Box>
+                          )}
+                        </ListItem>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </List>
+          </Paper>
+        )}
         
         {/* Floating Action Button for mobile */}
         {isLoggedIn && isMobile && (
           <Fab 
             color="primary" 
-            size="medium"
-            sx={{ position: 'fixed', bottom: 16, right: 16 }}
+            
+            sx={{ position: 'fixed', bottom: 70, right: 16 }}
             onClick={() => handleOpenMeetingDialog()}
           >
             <Plus size={24} />
@@ -686,7 +694,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       </Box>
     );
   };
-  
+
   // Render the inbox tab content
   const renderInboxTab = () => {
     if (!isLoggedIn) {
@@ -907,93 +915,53 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       </>
     );
   };
-  
+
   return (
     <Box sx={{ p: isMobile ? 1 : 2 }}>
-      {/* Additional CSS for the transparent clock styling */}
-      <style>
-        {`
-          .react-clock__face {
-            border: none !important;
-            background: transparent !important;
-          }
-          .react-clock {
-            background: transparent !important;
-          }
-        `}
-      </style>
-      
-      {/* Header with current day and clock - ADDED FROM STATUSSCREEN */}
+      {/* Header with current day and clock - REPLACED WITH CLOCKDAYCARD COMPONENT */}
       <Box sx={{ textAlign: 'center', mb: isMobile ? 2 : 3 }}>
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          gap: isMobile ? 2 : 4, 
-          mb: isMobile ? 1.5 : 3,
-          flexDirection: isMobile ? 'column' : 'row'
-        }}>
-          {/* Day widget with consistent color styling */}
-          <Paper 
-            elevation={2} 
-            sx={{ 
-              px: isMobile ? 2 : 3, 
-              py: isMobile ? 1 : 1.5, 
-              borderRadius: 2,
-              bgcolor: currentDayColor, // Using the same color variable calculation
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minWidth: isMobile ? 'auto' : 150,
-              width: isMobile ? '80%' : 'auto'
+        {isMobile ? (
+          // Mobile view - Column layout
+          <ClockDayCard
+            time={clockTime}
+            day={currentDayAbbreviation}
+            date={currentDateString}
+            dayCardColor={getDayColor(currentDayAbbreviation)}
+            direction="column"
+            gap={2}
+            dayCardMinWidth="80%"
+            clockSize={100}
+            clockContainerSize={120}
+            showSeconds={false}
+            dayCardElevation={2}
+            dayCardPaperProps={{
+              sx: {
+                width: '100%',
+                maxWidth: '300px'
+              }
             }}
-          >
-            <Typography 
-              variant={isMobile ? "h5" : "h4"} 
-              sx={{ 
-                fontWeight: 'bold', 
-                color: 'rgba(0,0,0,0.85)', // Same text color as in meeting items
-                mb: 0.5
-              }}
-            >
-              {currentFullDayName}
-            </Typography>
-            <Typography 
-              variant={isMobile ? "subtitle1" : "h6"} 
-              sx={{ color: 'rgba(0,0,0,0.7)' }} // Same secondary text color as in meeting items
-            >
-              {currentDateString}
-            </Typography>
-          </Paper>
-          
-          {/* Real-time clock component */}
-          {!isMobile && (
-            <Box sx={{ 
-              p: 2, 
-              borderRadius: '50%', 
-              bgcolor: 'background.paper',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 3,
-              width: 160,
-              height: 160
-            }}>
-              <Clock 
-                value={clockTime} // Use clockTime that updates every second
-                size={140}
-                renderNumbers={true}
-                hourHandLength={50}
-                hourHandWidth={4}
-                minuteHandLength={70}
-                minuteHandWidth={2}
-                secondHandLength={75}
-                secondHandWidth={1}
-              />
-            </Box>
-          )}
-        </Box>
+          />
+        ) : (
+          // Desktop view - Row layout
+          <ClockDayCard
+            time={clockTime}
+            day={currentDayAbbreviation}
+            date={currentDateString}
+            dayCardColor={getDayColor(currentDayAbbreviation)}
+            direction="row"
+            gap={4}
+            dayCardMinWidth={150}
+            clockSize={140}
+            clockContainerSize={160}
+            showSeconds={true}
+            hourHandWidth={4}
+            minuteHandWidth={2}
+            secondHandWidth={1}
+            hourHandLength={50}
+            minuteHandLength={70}
+            secondHandLength={75}
+          />
+        )}
       </Box>
     
       {/* Tabs */}
@@ -1044,47 +1012,35 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: isMobile ? 'column' : 'row',
-              gap: 2 
-            }}>
-              <TextField
-                label="Datum"
-                name="date"
-                type="date"
-                value={meetingFormData.date}
-                onChange={handleMeetingInputChange}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                required
-                size={isMobile ? "small" : "medium"}
-                margin={isMobile ? "dense" : "normal"}
-              />
-              
-              <TextField
-                label="Tid"
-                name="time"
-                type="time"
-                value={meetingFormData.time}
-                onChange={handleMeetingInputChange}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                required
-                size={isMobile ? "small" : "medium"}
-                margin={isMobile ? "dense" : "normal"}
-              />
-            </Box>
+            <TextField
+              label="Datum"
+              name="date"
+              type="date"
+              value={meetingFormData.date}
+              onChange={handleMeetingInputChange}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              required
+              size={isMobile ? "small" : "medium"}
+              margin={isMobile ? "dense" : "normal"}
+              disabled={isSavingMeeting}
+            />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseMeetingDialog}>Avbryt</Button>
+          <Button 
+            onClick={handleCloseMeetingDialog}
+            disabled={isSavingMeeting}
+          >
+            Avbryt
+          </Button>
           <Button 
             onClick={handleSaveMeeting} 
             variant="contained"
-            disabled={!meetingFormData.date || !meetingFormData.time}
+            disabled={!meetingFormData.date || isSavingMeeting}
+            startIcon={isSavingMeeting ? <CircularProgress size={16} color="inherit" /> : null}
           >
-            Spara
+            {isSavingMeeting ? 'Sparar...' : 'Spara'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1151,6 +1107,23 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
           </Button>
         </DialogActions>
       </Dialog>
+      
+      {/* Snackbar for notifications */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseSnackbar} 
+          severity={snackbar.severity} 
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

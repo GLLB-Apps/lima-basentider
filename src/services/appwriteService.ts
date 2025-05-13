@@ -1,5 +1,5 @@
 import { Client, Databases, Storage, ID, Query } from 'appwrite';
-import { DaySchedule, TimeSlot, User, InboxMessage } from '../types';
+import { DaySchedule, TimeSlot, User, InboxMessage, Meeting } from '../types';
 import { initialScheduleData, users as localUsers, dayColors } from '../data';
 
 // Appwrite setup
@@ -15,6 +15,7 @@ const BUCKET_SYMBOLS = '680fc0ed0025e03d14b5';
 const COLLECTION_SYMBOL_MESSAGES = 'COLLECTION_SYMBOL_MESSAGES'; // Collection ID for symbol messages
 const DOCUMENT_SYMBOL_MESSAGES_ID = '68113585000120b05aa2'; // Document ID for symbol messages
 const COLLECTION_INBOX = '681e3fff001cf5968f50'; // Collection ID for inbox messages
+const COLLECTION_MEETINGS = '682090c4003338f0a3f4'; // Collection ID for meetings
 
 if (!APPWRITE_ENDPOINT || !APPWRITE_PROJECT_ID || !APPWRITE_DATABASE_ID) {
   console.error('Missing Appwrite environment variables');
@@ -509,6 +510,154 @@ export const deleteInboxMessage = async (id: string): Promise<boolean> => {
     return true;
   } catch (err) {
     console.error('Error deleting inbox message:', err);
+    return false;
+  }
+};
+
+// MEETINGS FUNCTIONS
+
+// Get all meetings
+export const getAllMeetings = async (): Promise<Meeting[]> => {
+  try {
+    const response = await databases.listDocuments(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_MEETINGS,
+      [Query.orderAsc('date')] // Sort by date ascending
+    );
+
+    console.log("Retrieved meetings:", response.documents.length);
+    
+    return response.documents.map(doc => ({
+      id: doc.$id,
+      date: doc.date,
+      time: doc.time || '10:00' // Include time with default
+    }));
+  } catch (err) {
+    console.error('Error fetching meetings:', err);
+    return [];
+  }
+};
+
+// Get meetings by date range
+export const getMeetingsByDateRange = async (startDate: string, endDate: string): Promise<Meeting[]> => {
+  try {
+    const response = await databases.listDocuments(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_MEETINGS,
+      [
+        Query.greaterThanEqual('date', startDate),
+        Query.lessThanEqual('date', endDate),
+        Query.orderAsc('date')
+      ]
+    );
+
+    console.log(`Retrieved meetings between ${startDate} and ${endDate}:`, response.documents.length);
+    
+    return response.documents.map(doc => ({
+      id: doc.$id,
+      date: doc.date,
+      time: doc.time || '10:00' // Include time with default
+    }));
+  } catch (err) {
+    console.error('Error fetching meetings by date range:', err);
+    return [];
+  }
+};
+
+// Create a new meeting with time
+export const createMeeting = async (date: string, time: string = '10:00'): Promise<Meeting | null> => {
+  try {
+    console.log("Creating new meeting for date:", date, "time:", time);
+    
+    const response = await databases.createDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_MEETINGS,
+      ID.unique(),
+      { 
+        date,
+        time
+      }
+    );
+    
+    console.log("Successfully created meeting:", response.$id);
+    
+    return {
+      id: response.$id,
+      date: response.date,
+      time: response.time
+    };
+  } catch (err) {
+    console.error('Error creating meeting:', err);
+    return null;
+  }
+};
+
+// Get a specific meeting by ID
+export const getMeetingById = async (id: string): Promise<Meeting | null> => {
+  try {
+    console.log("Fetching meeting by ID:", id);
+    
+    const response = await databases.getDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_MEETINGS,
+      id
+    );
+    
+    console.log("Successfully retrieved meeting:", response.$id);
+    
+    return {
+      id: response.$id,
+      date: response.date,
+      time: response.time || '10:00' // Include time with default
+    };
+  } catch (err) {
+    console.error('Error fetching meeting by ID:', err);
+    return null;
+  }
+};
+
+// Update a meeting with time
+export const updateMeeting = async (id: string, date: string, time?: string): Promise<boolean> => {
+  try {
+    console.log("Updating meeting:", id, "with new date:", date, "and time:", time);
+    
+    const updateData: { date: string; time?: string } = { date };
+    
+    // Only include time in the update if it's provided
+    if (time !== undefined) {
+      updateData.time = time;
+    }
+    
+    await databases.updateDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_MEETINGS,
+      id,
+      updateData
+    );
+    
+    console.log("Successfully updated meeting");
+    return true;
+  } catch (err) {
+    console.error('Error updating meeting:', err);
+    return false;
+  }
+};
+
+// Delete a meeting
+export const deleteMeeting = async (id: string): Promise<boolean> => {
+  try {
+    console.log("Deleting meeting:", id);
+    
+    await databases.deleteDocument(
+      APPWRITE_DATABASE_ID,
+      COLLECTION_MEETINGS,
+      id
+    );
+    
+    console.log("Successfully deleted meeting");
+    return true;
+  } catch (err) {
+    console.error('Error deleting meeting:', err);
     return false;
   }
 };

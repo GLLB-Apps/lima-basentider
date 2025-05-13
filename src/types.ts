@@ -31,3 +31,10 @@ export interface TimeSlot {
     date: string;
     isRead: boolean;
   }
+
+  // New Meeting type for our meetings backend
+export interface Meeting {
+  id: string;
+  date: string;
+  time: string;
+}
