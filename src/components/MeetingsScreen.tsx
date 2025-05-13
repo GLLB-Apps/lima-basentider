@@ -7,6 +7,8 @@ import {
   Container, Snackbar, Alert
 } from '@mui/material';
 import { Plus, Edit, Trash, Gavel, Clock as ClockIcon, Calendar as CalendarIcon, Inbox, SquareCheckBig } from 'lucide-react';
+import Clock from 'react-clock'; // Import the Clock component
+import 'react-clock/dist/Clock.css'; // Import the styles
 import ClockDayCard, { fullDayNames, dayColors } from '../components/ClockDayCard'; // Import the ClockDayCard component
 import { User as UserType, InboxMessage, Meeting } from '../types';
 import { 
@@ -66,6 +68,22 @@ const getDayColor = (day: string): string => {
   return colorMap[day] || '#1976D2'; // Default to blue
 };
 
+// Helper function to create a Date object with a specific time (default 10:00)
+const createMeetingTimeDate = (dateString: string, timeString: string = "10:00"): Date => {
+  const [year, month, day] = dateString.split('-').map(num => parseInt(num, 10));
+  const [hours, minutes] = timeString.split(':').map(num => parseInt(num, 10));
+  
+  const meetingDate = new Date();
+  meetingDate.setFullYear(year);
+  meetingDate.setMonth(month - 1); // Month is 0-indexed in JS
+  meetingDate.setDate(day);
+  meetingDate.setHours(hours || 10);
+  meetingDate.setMinutes(minutes || 0);
+  meetingDate.setSeconds(0);
+  
+  return meetingDate;
+};
+
 interface MeetingsScreenProps {
   isLoggedIn: boolean;
   currentUser: UserType | null;
@@ -104,6 +122,10 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   
+  // Meeting time state - For demonstration, using a fixed time (10:00 AM)
+  // In a real app, you might want to store meeting times in your database
+  const [meetingTime, setMeetingTime] = useState("10:00");
+  
   // Snackbar notification state
   const [snackbar, setSnackbar] = useState({
     open: false,
@@ -113,7 +135,8 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
   
   // Simplified Meeting Form state
   const [meetingFormData, setMeetingFormData] = useState({
-    date: ''
+    date: '',
+    time: "10:00" // Default time
   });
   
   // Inbox Form state
@@ -221,13 +244,15 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     if (meeting) {
       setSelectedMeeting(meeting);
       setMeetingFormData({
-        date: meeting.date
+        date: meeting.date,
+        time: meetingTime // Use the existing time or a default
       });
       setIsEditingMeeting(true);
     } else {
       setSelectedMeeting(null);
       setMeetingFormData({
-        date: getTodayDate()
+        date: getTodayDate(),
+        time: "10:00" // Default time
       });
       setIsEditingMeeting(false);
     }
@@ -278,6 +303,10 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
               : meeting
           );
           setMeetings(updatedMeetings);
+          
+          // Also update the meeting time (in a real app, you would save this to your database)
+          setMeetingTime(meetingFormData.time);
+          
           showSnackbar('Mötet har uppdaterats');
         } else {
           throw new Error('Kunde inte uppdatera mötet');
@@ -289,6 +318,10 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
         if (newMeeting) {
           // Add to local state
           setMeetings([...meetings, newMeeting]);
+          
+          // Also set the meeting time (in a real app, you would save this to your database)
+          setMeetingTime(meetingFormData.time);
+          
           showSnackbar('Nytt möte har skapats');
         } else {
           throw new Error('Kunde inte skapa nytt möte');
@@ -439,7 +472,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
     
     return `${dayNum} ${monthName} ${year}`;
   };
-
   // Render the meetings tab content
   const renderMeetingsTab = () => {
     return (
@@ -487,6 +519,9 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                   const dayColor = getDayColor(dayOfWeek) + '88';
                   const fullDayName = fullDayNames[dayOfWeek] || dayOfWeek;
                   
+                  // Create a Date object for the meeting time
+                  const meetingDateTime = createMeetingTimeDate(meeting.date, meetingTime);
+                  
                   // Responsive layout based on screen size
                   return (
                     <React.Fragment key={meeting.id}>
@@ -503,31 +538,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             gap: 1.5
                           }}
                         >
-                          {/* Calendar Mulberry Symbol Icon */}
-                          <Box 
-                            component="div"
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flex: '0 0 auto'
-                            }}
-                          >
-                            <CalendarIcon size={36} color="#1976D2" />
-                          </Box>
-                          
-                          {/* Meeting Title */}
-                          <Box sx={{ 
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flex: '1 1 auto'
-                          }}>
-                            <Typography variant="h6" fontWeight="medium" noWrap sx={{ mr: 1, maxWidth: '110px' }}>
-                              Basmöte
-                            </Typography>
-                          </Box>
-                          
                           {/* Day Card - Using consistent styling */}
                           <Paper 
                             elevation={1} 
@@ -566,6 +576,48 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             </Typography>
                           </Paper>
                           
+                          {/* Meeting Title */}
+                          <Box sx={{ 
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flex: '1 1 auto'
+                          }}>
+                            <Typography variant="h6" fontWeight="medium" noWrap sx={{ mr: 1, maxWidth: '110px' }}>
+                              Basmöte
+                            </Typography>
+                          </Box>
+                          
+                          {/* Analog Clock representing meeting time */}
+                          <Box 
+                            component="div"
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flex: '0 0 auto',
+                              p: 1,
+                              borderRadius: '50%',
+                              bgcolor: 'background.paper',
+                              boxShadow: 1,
+                              width: 60,
+                              height: 60
+                            }}
+                          >
+                            <Clock 
+                              value={meetingDateTime}
+                              size={50}
+                            
+                              hourHandLength={20}
+                              hourHandWidth={3}
+                              minuteHandLength={30}
+                              minuteHandWidth={2}
+                              secondHandLength={0} // No seconds hand on mobile
+                              renderSecondHand={false}
+                              renderMinuteMarks={false}
+                            />
+                          </Box>
+                          
                           {/* Edit/Delete icons only for logged in users */}
                           {isLoggedIn && (
                             <IconButton 
@@ -593,21 +645,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             gap: 2.5
                           }}
                         >
-                          {/* Calendar Mulberry Symbol Icon */}
-                          <Box 
-                            component="div"
-                            sx={{
-                              minWidth: 70,
-                              minHeight: 70,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flex: '0 0 auto'
-                            }}
-                          >
-                            <CalendarIcon size={56} color="#1976D2" />
-                          </Box>
-                          
                           {/* Day Card - Using consistent styling */}
                           <Paper 
                             elevation={1} 
@@ -642,15 +679,50 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
                             </Typography>
                           </Paper>
                           
-                          {/* Meeting title */}
+                          {/* Meeting Title with Time */}
                           <Box sx={{ 
                             flexGrow: 1,
                             display: 'flex',
-                            alignItems: 'center'
+                            flexDirection: 'column'
                           }}>
                             <Typography variant="h5" fontWeight="medium">
                               Basmöte
                             </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              Tid: {meetingTime}
+                            </Typography>
+                          </Box>
+                          
+                          {/* Analog Clock representing meeting time */}
+                          <Box 
+                            component="div"
+                            sx={{
+                              minWidth: 80,
+                              minHeight: 80,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flex: '0 0 auto',
+                              
+                              borderRadius: '50%',
+                              bgcolor: 'background.paper',
+                              boxShadow: 2,
+                              width: 80,
+                              height: 80
+                            }}
+                          >
+                            <Clock 
+                              value={meetingDateTime}
+                              size={70}
+                              
+                              hourHandLength={60}
+                              hourHandWidth={3}
+                              minuteHandLength={80}
+                              minuteHandWidth={2}
+                              secondHandLength={0} // No seconds hand needed
+                              renderSecondHand={false}
+                              renderMinuteMarks={false}
+                            />
                           </Box>
                           
                           {/* Icons only for logged in users */}
@@ -694,7 +766,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       </Box>
     );
   };
-
   // Render the inbox tab content
   const renderInboxTab = () => {
     if (!isLoggedIn) {
@@ -915,7 +986,6 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       </>
     );
   };
-
   return (
     <Box sx={{ p: isMobile ? 1 : 2 }}>
       {/* Header with current day and clock - REPLACED WITH CLOCKDAYCARD COMPONENT */}
@@ -999,7 +1069,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
       {/* Tab Content */}
       {activeTab === 0 ? renderMeetingsTab() : renderInboxTab()}
       
-      {/* Simplified Meeting Dialog */}
+      {/* Simplified Meeting Dialog - Now with Time field */}
       <Dialog 
         open={meetingDialogOpen} 
         onClose={handleCloseMeetingDialog} 
@@ -1011,7 +1081,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
           {isEditingMeeting ? 'Redigera basmöte' : 'Nytt basmöte'}
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ mt: 2 }}>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="Datum"
               name="date"
@@ -1025,6 +1095,66 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
               margin={isMobile ? "dense" : "normal"}
               disabled={isSavingMeeting}
             />
+            
+            {/* Added Time input field */}
+            <TextField
+              label="Tid"
+              name="time"
+              type="time"
+              value={meetingFormData.time}
+              onChange={handleMeetingInputChange}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+              required
+              size={isMobile ? "small" : "medium"}
+              margin={isMobile ? "dense" : "normal"}
+              disabled={isSavingMeeting}
+              inputProps={{
+                step: 300, // 5 minutes
+              }}
+            />
+            
+            {/* Current time preview with analog clock */}
+            <Box sx={{ 
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              mt: 1,
+              mb: 1
+            }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Förhandsgranskning av mötestid:
+              </Typography>
+              <Box sx={{ 
+                p: 2, 
+                borderRadius: '50%', 
+                bgcolor: 'background.paper',
+                boxShadow: 2,
+                width: 120,
+                height: 120,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <Clock 
+                  value={createMeetingTimeDate(
+                    meetingFormData.date || getTodayDate(), 
+                    meetingFormData.time
+                  )}
+                  size={100}
+                  renderNumbers={true}
+                  hourHandLength={40}
+                  hourHandWidth={3}
+                  minuteHandLength={60}
+                  minuteHandWidth={2}
+                  secondHandLength={0}
+                  renderSecondHand={false}
+                  renderMinuteMarks={true}
+                  minuteMarksLength={5}
+                  hourMarksLength={10}
+                />
+              </Box>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -1037,7 +1167,7 @@ const MeetingsScreen: React.FC<MeetingsScreenProps> = ({ isLoggedIn, currentUser
           <Button 
             onClick={handleSaveMeeting} 
             variant="contained"
-            disabled={!meetingFormData.date || isSavingMeeting}
+            disabled={!meetingFormData.date || !meetingFormData.time || isSavingMeeting}
             startIcon={isSavingMeeting ? <CircularProgress size={16} color="inherit" /> : null}
           >
             {isSavingMeeting ? 'Sparar...' : 'Spara'}
