@@ -536,15 +536,38 @@ const StatusScreen = ({
                   />
                 </Box>
                 
-                {/* Add text for opening day */}
-                <Box sx={{ textAlign: 'center' }}>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                {/* Add text for opening day with the day's color background */}
+                <Paper 
+                  elevation={2} 
+                  sx={{ 
+                    px: 2.5, 
+                    py: 1.25, 
+                    borderRadius: 2,
+                    bgcolor: nextDayColor, // Use the next day's color for the background
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 130
+                  }}
+                >
+                  <Typography 
+                    variant="h6" 
+                    sx={{ 
+                      fontWeight: 'bold', 
+                      color: 'rgba(0,0,0,0.85)',
+                      mb: 0.5
+                    }}
+                  >
                     {fullDayNames[nextOpening.day] || nextOpening.day}
                   </Typography>
-                  <Typography variant="body1">
+                  <Typography 
+                    variant="body2" 
+                    sx={{ color: 'rgba(0,0,0,0.7)' }}
+                  >
                     {nextOpening.time}
                   </Typography>
-                </Box>
+                </Paper>
               </Box>
             </Box>
           ) : (
